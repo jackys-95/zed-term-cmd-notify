@@ -19,6 +19,6 @@ The target flow is Zed terminal on macOS → interactive SSH → remote tmux →
 
 Track the remote hook, notification transport, Zed protocol dependency, and validation across plain SSH shells and remote tmux panes. Do not store credentials, SSH private configuration, or generated build artifacts in this repository.
 
-## Status
+## Design and status
 
-Repository initialized. Implementation choice remains open between native OSC 9 support in Zed and a Mac-side notification bridge.
+The prospective architecture and alternatives are recorded in [docs/prospective-design.md](docs/prospective-design.md). The initial implementation is not started; the main open choice is native OSC 9 support in Zed versus a Mac-side notification bridge.
