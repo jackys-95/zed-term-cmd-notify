@@ -3,5 +3,9 @@
 .env.*
 !.env.example
 /.local/
+/target/
+/.build/
+**/xcuserdata/
+*.xcuserstate
 __pycache__/
 *.py[cod]

@@ -4,6 +4,8 @@
 
 Build Zed Terminal Command Notifications in small working slices, using the [initial design](initial-design.md) for scope and the [validation matrix](validation-matrix.md) for required behavior and tests. Establish the shared Mac helper and ordinary local command delivery first, add SSH delivery, then integrate persistent local and remote tmux. Revise the order and technical choices as implementation produces evidence.
 
+See the evolving [code layout](code-layout.md) for the proposed source organization and build orchestration.
+
 This plan deliberately stays at the level of working outcomes. Implementation and testing will expose constraints that change task boundaries, interfaces, and sequencing; an exhaustive task list now would become stale and add maintenance without improving the next decision. Elaborate the next slice when it is ready to implement, and revise later slices from what we learn. Scope, required behavior, and validation obligations remain explicit in the linked documents.
 
 ## Implementation sequence
