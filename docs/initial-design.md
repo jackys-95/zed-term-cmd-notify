@@ -6,15 +6,17 @@
 
 ## Purpose
 
-This document defines the scope for silent macOS notifications when long-running foreground commands finish in local or remote interactive Zsh sessions used through Zed's regular integrated terminal. Both workflows include tmux, with the remote workflow covering AL2023. They use a Mac-side helper and associate each notification with its source Zed window.
+This document defines the scope for silent macOS notifications when long-running foreground commands finish in interactive Zsh sessions used through Zed's regular integrated terminal. It covers ordinary local shells, local tmux panes, plain SSH shells, and remote tmux panes. All four workflows use a Mac-side helper and associate each notification with its source Zed window. AL2023 is the initial Linux target for the remote workflow.
 
-The approved implementation direction is a Rust SSH launcher, a small prebuilt Rust remote event sender, and a small Swift helper for native macOS notifications and window APIs. Native OSC 9 is a conditional future alternative only. It has no implementation, configuration, or test work in the current scope, and the project does not require a Zed fork.
+The approved implementation direction uses Zsh command hooks, a Rust local client, and a Swift helper for native macOS notifications and window APIs. Remote delivery adds a Rust SSH launcher and a small prebuilt Rust event sender. Local and remote tmux share session-binding behavior while using their respective delivery paths. Native OSC 9 is a conditional future alternative only. It has no implementation, configuration, or test work in the current scope, and the project does not require a Zed fork.
 
 ## Problem and goals
 
-The local Zsh process sees an interactive SSH connection as one foreground command. Its `precmd` hook runs when SSH returns control, such as after logout or detach, so it cannot report completion of individual commands in a remote tmux pane while the connection remains open.
+Long-running commands can finish while their source Zed window or tmux pane is hidden. The user needs a silent completion notification that distinguishes the source window from another foreground Zed window and returns to the source on click. Completion detection belongs in the interactive Zsh shell running the command.
 
-A local shell hook can report local command completion directly to the Mac helper, using the same detection and delivery path inside local tmux. Remote commands need hooks in the remote shells so that notifications arrive while SSH and tmux remain attached. Tmux integration manages the session's current window association; the Zsh hooks inside its panes report command completion.
+A local shell hook reports completion through the Rust local client to the Mac helper, using the same detection and delivery path inside local tmux. Ordinary shells retain their original window association; persistent tmux panes need a session binding that can change when the user detaches and reattaches in another window. Tmux integration manages that current association, and the Zsh hooks inside its panes report command completion.
+
+For remote commands, the local Zsh process sees the interactive SSH connection as one foreground command. Its `precmd` hook runs when SSH returns control, such as after logout or detach, so it cannot report individual remote completions while the connection remains open. Hooks in the remote shells send those events through the active SSH notification connection.
 
 The first version includes foreground commands in local interactive Zsh shells in Zed's regular integrated terminal, associated local tmux sessions, plain remote interactive Zsh over SSH from that terminal, and associated remote tmux sessions while their notification connections are active. Every interactive Zsh pane in an associated tmux session is covered, including hidden panes. Delivery while local tmux is detached remains an open policy decision. A pager, TUI, or REPL remains active until it exits and returns control to Zsh.
 
@@ -85,7 +87,7 @@ The association does not depend on a saved rectangle, title, numeric WindowServe
 
 ## Mac-side architecture and session behavior
 
-Local and remote hooks report to the same notification handling in the Swift helper. The helper uses native macOS notifications, requests notification authorization, handles clicks, and uses Accessibility permission for window inspection and control. It should not appear as a Dock application.
+Local and remote hooks report to the same notification handling in the Swift helper. Local hooks invoke the short-lived Rust local client for binding and completion requests over local IPC. The helper uses native macOS notifications, requests notification authorization, handles clicks, and uses Accessibility permission for window inspection and control. It should not appear as a Dock application.
 
 The approved helper lifetime follows the entire Zed app instance. Start the helper on demand when an eligible local shell first requests a binding, eligible local tmux entry requests a binding, or an eligible SSH launcher starts, then reuse it until that Zed app exits. Retain window objects and notification tokens throughout that app session. Closing a project window invalidates its association but does not stop the helper; it also stays alive if all windows close while Zed remains running. No login startup service or automatic daemon restart is required.
 
@@ -93,7 +95,7 @@ Observe `NSWorkspace.didTerminateApplicationNotification` through the workspace'
 
 A generic Rust launcher starts interactive SSH using the user's existing alias and SSH configuration. Remote completion events reach the Mac helper through a reverse forward in that same SSH connection. The bridge operates independently of any separate remote-command wrapper.
 
-Concurrent remote connections need distinct routing and associated tmux sessions. Events from hidden panes in an associated session must use the same connection binding. Supporting local commands adds a direct local IPC path; it does not require SSH.
+Concurrent remote connections need distinct routing and associated tmux sessions. Events from hidden panes in an associated remote session must use the same connection binding. Local tmux instead shares a helper window token across its panes and delivers through the local client.
 
 ## Persistent tmux sessions, attachment, and creation
 
@@ -119,13 +121,17 @@ Local delivery while detached remains undecided. Direct helper access can remain
 
 The session has one current notification context shared by its panes. Before implementing attachment ownership, decide which client controls that context when several clients attach simultaneously, how detach affects the selected owner, and how attachment from an excluded terminal affects an existing eligible binding. Do not assume that publishing the latest context alone resolves those cases.
 
-## Hook installation and connection failures
+## Hook installation and delivery failures
 
-Remote hooks load in each interactive Zsh pane, normally through remote `~/.zshrc`. Existing shells need to source the hook or restart after installation. Local hooks need equivalent setup in the Mac's interactive Zsh environment, including tmux panes, and enforce the eligibility rules above. Restored ordinary local shells defer binding until their first eligible interactive command; local tmux panes resolve an explicitly established session binding. The environment gate supplies no source-window identity.
+Local hooks load in the Mac's interactive Zsh environment, normally through `~/.zshrc`, including tmux panes, and enforce the eligibility rules above. Remote hooks likewise load in each interactive Zsh shell or pane through remote `~/.zshrc`. Existing local and remote shells need to source the hook or restart after installation. Restored ordinary local shells defer binding until their first eligible interactive command; local tmux panes resolve an explicitly established session binding. The environment gate supplies no source-window identity.
+
+Local completion requests use the Rust local client with bounded connection and delivery deadlines. An unavailable helper or failed request must preserve the command's exit status and allow the prompt to return. Ordinary local binding recovery and local tmux session recovery follow the distinct rules above.
 
 The approved remote sender is a short-lived Rust executable invoked by the Zsh completion hook. It sends one completion event to the registered loopback endpoint through the SSH reverse forward, then exits. Build a Linux binary for the remote host's architecture and copy it alongside the remote Zsh scripts; AL2023 does not need Rust or Cargo installed. No remote sender daemon is required. Connection and delivery attempts must have bounded deadlines, and sender failure must preserve the command's exit status and allow the prompt to return. The event protocol, build target, and concrete deadline remain to be selected and validated.
 
 The baseline requires manual reconnect and introduces no always-running daemon or replay service. If notification setup fails, SSH should still proceed with a clear indication that notifications are unavailable. Local command execution and tmux attachment must likewise proceed when the helper is unavailable. Hooks around the remote launcher or local tmux entry must not treat SSH exit or tmux detach as an individual pane command completion.
+
+### SSH disconnect cleanup
 
 Local terminal cleanup after the launcher's SSH process exits is approved. The user's laptop can lose connectivity or sleep while attached to remote tmux, leaving mouse-reporting modes enabled after an abrupt disconnect. Before returning control to the local shell, the launcher must disable the common mouse-reporting modes on its interactive terminal and restore any terminal settings it changed. Apply the same cleanup to normal SSH exit and disconnect failures, preserving the SSH result even if cleanup fails. Prefer targeted mode cleanup over automatically running a full `reset`, and preserve terminal contents. This requirement covers connections started through the launcher; it does not introduce a general shell hook for arbitrary SSH commands.
 
