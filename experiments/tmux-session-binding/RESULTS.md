@@ -16,8 +16,9 @@ This result covers only local macOS default attach and session-option binding. I
 
 - `[shell prompt redacted]` replaces the shell prompt, including user and host.
 - `<REPO_ROOT>` replaces the absolute repository path and its home-directory prefix. It is a transcript placeholder, not a shell variable.
-- `<RUN_1>`, `<RUN_2>`, and `<RUN_3>` replace generated probe run IDs. `<SOCKET_1>`, `<SOCKET_2>`, and `<SOCKET_3>` replace isolated socket labels.
+- `<RUN_1>` through `<RUN_5>` replace generated probe run IDs. `<SOCKET_1>` through `<SOCKET_5>` replace isolated socket labels.
 - `<PROBE_TTY>` and `<INSPECTOR_TTY>` replace terminal device names.
+- `<TIME>` replaces recorded clock times in the message log; entries retain their original order.
 - Session names, sentinel values, and context values retain their synthetic labels, with their generated run suffix replaced by the corresponding `<RUN_n>`.
 
 ## Operator transcript
@@ -165,4 +166,137 @@ The isolated client-attached hook will publish: local-probe-<RUN_3>
 [shell prompt redacted] % zsh <REPO_ROOT>/experiments/tmux-session-binding/probe-local-default-attach.zsh stop <REPO_ROOT>/.local/tmux-session-binding/<RUN_3>
 Stop only the isolated probe server on '<SOCKET_3>'? [y/N] y
 Stopped the isolated probe server. Runtime evidence remains in <REPO_ROOT>/.local/tmux-session-binding/<RUN_3>.
+```
+
+## First-session creation probe
+
+**PASS after changing the hook candidate to `after-new-session`.** The first attempt used `client-attached`; the new session had no `@zed_notify_context`. A fresh run loaded `after-new-session` before starting the isolated server, and inspection found the expected synthetic context on the first session.
+
+The fresh run's `create` command returned with tmux reporting that the client was detached. Its first inspection was therefore inconclusive because there were no attached clients. The operator then attached to session `0` on the isolated socket; inspection from a second terminal found exactly one attached client and the expected context. The isolated server was stopped after the passing inspection.
+
+The transcript below preserves the first attempt's supplied prepare, inspect, and diagnostic inputs and outputs.
+
+Preparation selected a fresh isolated socket without starting a server:
+
+```console
+[shell prompt redacted] % zsh experiments/tmux-session-binding/probe-local-first-session-create.zsh prepare
+Probe run: <REPO_ROOT>/.local/tmux-session-binding/<RUN_4>
+Reserved an unused isolated socket label: <SOCKET_4>
+No tmux server was started by prepare.
+
+Next, run this from the eligible Zed terminal:
+  zsh <REPO_ROOT>/experiments/tmux-session-binding/probe-local-first-session-create.zsh create <REPO_ROOT>/.local/tmux-session-binding/<RUN_4>
+The create command starts the first server/session on this socket and stays attached until detached.
+```
+
+Inspection from a second terminal found one attached client on the first session, but the context was empty:
+
+```console
+[shell prompt redacted] % zsh experiments/tmux-session-binding/probe-local-first-session-create.zsh inspect .local/tmux-session-binding/<RUN_4>
+Probe sessions: 1
+  0
+Attached client sessions: 1
+  0
+Initial session context:
+FAIL: the first created session did not receive the expected context.
+```
+
+The server had loaded the configured `client-attached` hook:
+
+```console
+[shell prompt redacted] % probe_socket=<SOCKET_4>
+[shell prompt redacted] % tmux -N -L "$probe_socket" show-hooks -g client-attached
+client-attached[0] set-option -F @zed_notify_context local-probe-<RUN_4>
+```
+
+The attached client's message log contained the probe creation command and the read-only inspection commands. Terminal device names are redacted:
+
+```console
+[shell prompt redacted] % tmux -N -L "$probe_socket" show-messages -t "$(tmux -N -L "$probe_socket" list-clients -F '#{client_name}')"
+<TIME>: <INSPECTOR_TTY> command: show-messages -t <PROBE_TTY>
+<TIME>: <INSPECTOR_TTY> command: list-clients -F "#{client_name}"
+<TIME>: <INSPECTOR_TTY> command: show-hooks -g client-attached
+<TIME>: <INSPECTOR_TTY> command: show-options -qv -t 0 @zed_notify_context
+<TIME>: <INSPECTOR_TTY> command: list-clients -F "#{client_session}"
+<TIME>: <INSPECTOR_TTY> command: list-sessions -F "#{session_name}"
+<TIME>: <INSPECTOR_TTY> command: show-options -qsv @zed_notify_probe_run
+<TIME>: <PROBE_TTY> command: new-session
+```
+
+Before stopping the isolated server, the operator retried `create` on the same run. Its output still identified the `client-attached` hook, so it used the pre-revision script. After detaching, Zsh also reported `command not found: sac` at the script's line 262:
+
+```console
+[shell prompt redacted] % zsh <REPO_ROOT>/experiments/tmux-session-binding/probe-local-first-session-create.zsh create <REPO_ROOT>/.local/tmux-session-binding/<RUN_4>
+Starting the first session on the isolated socket with tmux new-session.
+The isolated client-attached hook will publish: local-probe-<RUN_4>
+[detached (from session 0)]
+<REPO_ROOT>/experiments/tmux-session-binding/probe-local-first-session-create.zsh:262: command not found: sac
+```
+
+The operator then stopped the isolated server:
+
+```console
+[shell prompt redacted] % zsh experiments/tmux-session-binding/probe-local-first-session-create.zsh stop .local/tmux-session-binding/<RUN_4>
+Stop only the isolated probe server on '<SOCKET_4>'? [y/N] y
+Stopped the isolated probe server. Runtime evidence remains in <REPO_ROOT>/.local/tmux-session-binding/<RUN_4>.
+```
+
+### Fresh run: `after-new-session` passed
+
+Preparation reserved a new isolated socket without starting a server:
+
+```console
+[shell prompt redacted] % zsh experiments/tmux-session-binding/probe-local-first-session-create.zsh prepare
+Probe run: <REPO_ROOT>/.local/tmux-session-binding/<RUN_5>
+Reserved an unused isolated socket label: <SOCKET_5>
+No tmux server was started by prepare.
+
+Next, run this from the eligible Zed terminal:
+  zsh <REPO_ROOT>/experiments/tmux-session-binding/probe-local-first-session-create.zsh create <REPO_ROOT>/.local/tmux-session-binding/<RUN_5>
+The create command starts the first server/session on this socket and stays attached until detached.
+```
+
+The operator ran the printed `create` command. It reported the updated hook, then returned detached:
+
+```console
+[shell prompt redacted] % zsh <REPO_ROOT>/experiments/tmux-session-binding/probe-local-first-session-create.zsh create <REPO_ROOT>/.local/tmux-session-binding/<RUN_5>
+Starting the first session on the isolated probe socket with tmux new-session.
+The isolated after-new-session hook will publish: local-probe-<RUN_5>
+[detached (from session 0)]
+```
+
+The first inspection was inconclusive because the session had no attached client:
+
+```console
+[shell prompt redacted] % zsh experiments/tmux-session-binding/probe-local-first-session-create.zsh inspect .local/tmux-session-binding/<RUN_5>
+Probe sessions: 1
+  0
+Attached client sessions: 0
+INCONCLUSIVE: inspect while exactly one probe client is attached.
+```
+
+The operator then attached to the only session on the isolated socket. The command was:
+
+```console
+tmux -L <SOCKET_5> attach-session -t 0
+```
+
+Inspection from a second eligible terminal passed:
+
+```console
+[shell prompt redacted] % zsh experiments/tmux-session-binding/probe-local-first-session-create.zsh inspect .local/tmux-session-binding/<RUN_5>
+Probe sessions: 1
+  0
+Attached client sessions: 1
+  0
+Initial session context: local-probe-<RUN_5>
+PASS: the first created session received the probe context while attached.
+```
+
+After detaching the client, the operator stopped the isolated server:
+
+```console
+[shell prompt redacted] % zsh experiments/tmux-session-binding/probe-local-first-session-create.zsh stop .local/tmux-session-binding/<RUN_5>
+Stop only the isolated probe server on '<SOCKET_5>'? [y/N] y
+Stopped the isolated probe server. Runtime evidence remains in <REPO_ROOT>/.local/tmux-session-binding/<RUN_5>.
 ```
