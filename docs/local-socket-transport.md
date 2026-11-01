@@ -1,6 +1,6 @@
 # Local Unix Socket Transport v1
 
-**Status:** Approved design; implementation pending.
+**Status:** Approved design; Rust client implemented. Swift server and interoperability are deferred for separate review.
 
 ## Purpose and scope
 
@@ -97,7 +97,11 @@ Set `SO_NOSIGPIPE` on every Rust client socket and accepted Swift socket before 
 
 ## Validation
 
-The integration test connects the real Rust client to the Swift server over a Unix socket. Fake capture returns a source object; Rust receives its binding ID and sends a completion using it. Fake delivery must receive that same object with the expected duration and exit status, and Rust must receive `accepted`. This exercises both codecs and the transport without requiring Zed, Accessibility permission, or native notifications. These checks are required evidence; they have not yet run.
+The integration test connects the real Rust client to the Swift server over a Unix socket. Fake capture returns a source object; Rust receives its binding ID and sends a completion using it. Fake delivery must receive that same object with the expected duration and exit status, and Rust must receive `accepted`. This exercises both codecs and the transport without requiring Zed, Accessibility permission, or native notifications. These checks are required evidence for the deferred Swift server and interoperability change.
+
+The current Rust change provides endpoint selection, `bind`, and `complete`, with ownership and permission checks, bounded framing, nonblocking I/O, one monotonic exchange deadline, and macOS `SO_NOSIGPIPE`. Its unit tests cover pathname boundaries, a regular file at the socket path, an unavailable helper, fragmented responses, malformed and incomplete responses, oversized lengths, trailing data, a withheld response, a complete response with withheld EOF, and slow fragments that exceed the original exchange deadline.
+
+User-provided results confirm that `cargo build --workspace --locked`, `cargo test --workspace --locked`, and `cargo fmt --all -- --check` passed for the isolated Rust slice after the style and deadline-test updates. All 16 unit tests passed: eight protocol tests and eight transport tests. The usage example also passed its compile-only documentation check; it was not executed against a helper. Real Rust-to-Swift socket integration remains pending separate review.
 
 | Area | Cases | Required result |
 | --- | --- | --- |
