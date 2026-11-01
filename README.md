@@ -40,3 +40,9 @@ The authoritative scope and initial architecture are recorded in [docs/initial-d
 The [lightweight implementation plan](docs/implementation-plan.md) proposes working slices, with unit tests alongside each component and integration evidence guiding subsequent iterations.
 
 Probe scripts, API alternatives, and outcome summaries are preserved in [experiments/macos-window-notifications](experiments/macos-window-notifications/README.md). The archive distinguishes tested approaches from prototypes and uses configurable runtime directories.
+
+## License
+
+Copyright 2026 Jacky Shum.
+
+Licensed under the [Apache License, Version 2.0](LICENSE).
