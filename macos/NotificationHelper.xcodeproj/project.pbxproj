@@ -14,6 +14,11 @@
 		A00000000000000000000029 /* BindingRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002B /* BindingRegistry.swift */; };
 		A0000000000000000000002A /* NotificationRequestHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002C /* NotificationRequestHandler.swift */; };
 		A0000000000000000000002E /* RetainedWindowCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000030 /* RetainedWindowCapture.swift */; };
+		A00000000000000000000032 /* LocalSocketServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000033 /* LocalSocketServer.swift */; };
+		A00000000000000000000034 /* LocalSocketServerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000035 /* LocalSocketServerTests.swift */; };
+		A00000000000000000000036 /* LocalSocketEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000037 /* LocalSocketEndpoint.swift */; };
+		A00000000000000000000038 /* LocalSocketConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000039 /* LocalSocketConnection.swift */; };
+		A0000000000000000000003A /* LocalSocketOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000003B /* LocalSocketOperations.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -38,6 +43,11 @@
 		A0000000000000000000002B /* BindingRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BindingRegistry.swift; sourceTree = "<group>"; };
 		A0000000000000000000002C /* NotificationRequestHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRequestHandler.swift; sourceTree = "<group>"; };
 		A00000000000000000000030 /* RetainedWindowCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RetainedWindowCapture.swift; sourceTree = "<group>"; };
+		A00000000000000000000033 /* LocalSocketServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSocketServer.swift; sourceTree = "<group>"; };
+		A00000000000000000000035 /* LocalSocketServerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSocketServerTests.swift; sourceTree = "<group>"; };
+		A00000000000000000000037 /* LocalSocketEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSocketEndpoint.swift; sourceTree = "<group>"; };
+		A00000000000000000000039 /* LocalSocketConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSocketConnection.swift; sourceTree = "<group>"; };
+		A0000000000000000000003B /* LocalSocketOperations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSocketOperations.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -93,6 +103,7 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000008 /* NotificationHelperTests.swift */,
+				A00000000000000000000035 /* LocalSocketServerTests.swift */,
 			);
 			path = NotificationHelperTests;
 			sourceTree = "<group>";
@@ -110,6 +121,10 @@
 			children = (
 				A00000000000000000000025 /* NotificationProtocol.swift */,
 				A0000000000000000000002C /* NotificationRequestHandler.swift */,
+				A00000000000000000000033 /* LocalSocketServer.swift */,
+				A00000000000000000000037 /* LocalSocketEndpoint.swift */,
+				A00000000000000000000039 /* LocalSocketConnection.swift */,
+				A0000000000000000000003B /* LocalSocketOperations.swift */,
 			);
 			path = IPC;
 			sourceTree = "<group>";
@@ -234,6 +249,10 @@
 				A00000000000000000000029 /* BindingRegistry.swift in Sources */,
 				A0000000000000000000002A /* NotificationRequestHandler.swift in Sources */,
 				A0000000000000000000002E /* RetainedWindowCapture.swift in Sources */,
+				A00000000000000000000032 /* LocalSocketServer.swift in Sources */,
+				A00000000000000000000036 /* LocalSocketEndpoint.swift in Sources */,
+				A00000000000000000000038 /* LocalSocketConnection.swift in Sources */,
+				A0000000000000000000003A /* LocalSocketOperations.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -242,6 +261,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A0000000000000000000000D /* NotificationHelperTests.swift in Sources */,
+				A00000000000000000000034 /* LocalSocketServerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

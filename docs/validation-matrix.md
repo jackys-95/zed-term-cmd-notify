@@ -2,7 +2,7 @@
 
 The [binding state and recovery](binding-state-flows.md) sequences define the lifecycle behavior behind these checks. Selected policies are requirements to validate, not evidence that runtime integration has passed.
 
-The approved [local Unix socket transport](local-socket-transport.md) defines endpoint ownership, bounded I/O, and connection capacity for the Rust-to-Swift path. The Rust client is implemented; the Swift server and real-socket validation with fake capture and delivery are deferred for separate review.
+The approved [local Unix socket transport](local-socket-transport.md) defines endpoint ownership, bounded I/O, and connection capacity for the Rust-to-Swift path. The Rust client is reviewed and committed. The Swift server is split into focused components; behavior review and verification after the refactor remain pending. Real-socket interoperability with fake capture and delivery remains deferred.
 
 ## Component validation status
 
@@ -10,14 +10,15 @@ The results below record the completed component checks and isolated probes. Aut
 
 | Component | Recorded result | Scope and remaining work |
 | --- | --- | --- |
-| Rust and Swift protocol codecs | Passed with [shared fixtures and boundary checks](../protocol/README.md#shared-fixtures-and-checks) | Covers message validation and bounded framing. Rust socket I/O and deadlines have separate transport tests; Swift socket checks are deferred. |
+| Rust and Swift protocol codecs | Passed with [shared fixtures and boundary checks](../protocol/README.md#shared-fixtures-and-checks) | Covers message validation and bounded framing. Socket I/O and deadlines have separate transport tests. Swift verification after the server refactor remains pending. |
 | Cross-language codec exchange | `make protocol-interop` passed | Rust encodes requests for Swift to decode; Swift encodes responses for Rust to decode. The exchange uses files; real-socket interoperability remains pending. |
 | Swift binding handler | [Unit tests](../macos/NotificationHelperTests/NotificationHelperTests.swift) passed | Covers source lookup, completion arguments, capture failure, unknown bindings, and collision-safe token insertion. Completion-time source rejection and native delivery remain pending. |
 | Retained-window capture and validity | [Fake-environment tests](../macos/NotificationHelperTests/NotificationHelperTests.swift) passed | Covers capture prerequisites, process ownership, window role, focus changes, and retained-source validity. Live helper capture remains unexercised. |
 | Local tmux default attachment | [Isolated probe passed](../experiments/tmux-session-binding/RESULTS.md#outcome) | The actual selected session received the synthetic context and the other session remained unchanged. Named attachment, broader entry cases, and notification delivery remain pending. |
 | Local tmux first-session creation | [Isolated probe passed with `after-new-session`](../experiments/tmux-session-binding/RESULTS.md#first-session-creation-probe) | The created session retained its synthetic context, inspected after explicit reattachment. Publication before initial detachment and broader creation cases still need evidence. |
 | Rust socket client | User-provided results confirm the isolated workspace build, all 16 unit tests (eight protocol and eight transport), one compile-only documentation example, and formatting check passed after the style and deadline-test updates | Covers pathname boundaries, a regular file at the socket path, an unavailable helper, fragmented responses, malformed and incomplete responses, oversized lengths, trailing data, a withheld response, withheld EOF after a complete response, and slow fragments that exceed the original exchange deadline, using a mock Unix socket server. The usage example was checked for compilation only. Real Rust-to-Swift socket integration remains pending separate review. |
-| Local Unix socket transport | Rust client implemented; Swift server and interoperability deferred | Requires the [real-socket checks](local-socket-transport.md#validation) with fake capture and delivery in the separate server and interoperability change. |
+| Swift socket server | User-provided results confirm `xcodebuild test` passed after restoration and before the file split: 26 tests, comprising 18 existing helper tests and eight socket-server tests | The [server unit tests](../macos/NotificationHelperTests/LocalSocketServerTests.swift) use isolated endpoints; the test scheme disables app startup at the default endpoint. These tests are unchanged by the refactor. Swift behavior review and Xcode verification after the refactor remain pending. |
+| Local Unix socket transport | Rust client reviewed; Swift behavior review and verification after the refactor pending; interoperability deferred | Requires the [real-socket checks](local-socket-transport.md#validation) with fake capture and delivery in the separate interoperability slice. |
 
 ## Workflow validation
 

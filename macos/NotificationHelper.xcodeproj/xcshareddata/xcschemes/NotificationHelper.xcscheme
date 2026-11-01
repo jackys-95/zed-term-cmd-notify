@@ -41,6 +41,9 @@
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
+      <EnvironmentVariables>
+         <EnvironmentVariable key="ZED_NOTIFY_TEST_DISABLE_SOCKET_SERVER" value="1" isEnabled="YES"/>
+      </EnvironmentVariables>
       <Testables>
          <TestableReference
             skipped = "NO"

@@ -219,6 +219,6 @@ Repetition detection belongs to the persistent Zsh shell, with a last-reported f
 
 ## Implementation and validation boundaries
 
-The sequences specify behavior to implement. The helper currently looks up tokens before dispatching completion and has retained-window capture/validity support. Completion-time source rejection, notification actions, socket transport, shell recovery, and tmux integration must still connect these pieces.
+The sequences specify behavior to implement. The helper currently looks up tokens before dispatching completion and has retained-window capture/validity support. The Rust socket client and Swift server provide bind and completion exchanges. The refactored Swift server still needs behavior review and verification; real Rust-to-Swift socket integration remains pending. Completion-time source rejection, notification actions, shell recovery, and tmux integration remain to be implemented.
 
 Validation must distinguish window closure from client detachment; preserve delivery while local tmux is detached; cover simultaneous clients and excluded entry; reject stale tokens without clearing newer context; verify ordinary cache retry and failed rebind; and run the four-terminal example with independent routing. Local and remote tmux each need end-to-end transport evidence. Codec interoperability alone does not establish these lifecycle behaviors.

@@ -35,12 +35,12 @@ enum NotificationProtocol {
     private static let maxBindingIDBytes = 128
     private static let version = 1
 
-    enum Request: Equatable {
+    enum Request: Equatable, Sendable {
         case bind
         case complete(bindingID: String, elapsedMS: UInt64, exitCode: UInt8)
     }
 
-    enum ErrorCode: String, Equatable {
+    enum ErrorCode: String, Equatable, Sendable {
         case invalidRequest = "invalid_request"
         case unsupportedVersion = "unsupported_version"
         case requestTooLarge = "request_too_large"
@@ -48,7 +48,7 @@ enum NotificationProtocol {
         case unknownBinding = "unknown_binding"
     }
 
-    enum Response: Equatable {
+    enum Response: Equatable, Sendable {
         case bound(bindingID: String)
         case accepted
         case error(ErrorCode)
