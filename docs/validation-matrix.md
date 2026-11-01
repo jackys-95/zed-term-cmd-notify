@@ -1,5 +1,7 @@
 # Validation Matrix
 
+The [binding state and recovery](binding-state-flows.md) sequences define the lifecycle behavior behind these checks. Selected policies are requirements to validate, not evidence that runtime integration has passed.
+
 | Session | Hook location | Expected notification point | Status |
 | --- | --- | --- | --- |
 | Local interactive Zsh commands in Zed's regular integrated terminal | Mac interactive Zsh hook | Bind at first eligible `preexec`; cache the token for that shell and report qualifying completions to the Mac helper | Selected lazy binding; not implemented |
@@ -7,6 +9,11 @@
 | Subsequent commands in a bound local shell | Mac interactive Zsh hook | Reuse original token; no Rust client or Accessibility query at command launch | Not implemented |
 | Failed capture or stale local binding | Mac hook and helper response | Failed capture leaves cache empty; stale-token response clears it; retry at a later eligible launch, preserving older events' associations | Not implemented |
 | Manual local rebind after wrong-window capture | Zsh maintenance function and Rust IPC client | Clear and replace the calling shell's cache while intended window is foreground; failed capture leaves it empty; prior commands and issued notifications retain their tokens | Approved recovery; command spelling proposed; not implemented |
+| Local tmux completion while attached or detached | Pane Zsh hook and session context | Read the session's current helper token at qualifying completion; detachment preserves valid delivery and never causes completion-time recapture | Selected policy; not implemented |
+| Multiple clients attached to the same tmux session | Eligible attach integration and session context | Latest successful eligible publication wins; detach preserves it; excluded entry does not replace it | Selected policy; not implemented |
+| Local tmux source-window closure | Helper source validation and pane completion response | Skip unusable-source completion; no automatic fallback to an earlier client; explicit rebind or eligible reattachment restores delivery | Selected policy; not implemented |
+| Late completion failure after a newer tmux publication | Pane response handling and shared session context | Failure for old token B leaves newer token C unchanged; completion rejection does not clear session context | Required concurrency check; not implemented |
+| Local, local tmux, remote, and remote tmux terminals in one window | Independent shell caches, session contexts, and registered routes | Share source window and helper while preserving independent associations and correct rebind scope | Required integration check; not implemented |
 | Manual remote rebind | Remote sender control request through current registered route | Recapture the connection's Mac window association; future completions use replacement; issued notifications remain fixed; disconnected request fails promptly | Request shape defined; route not implemented |
 | Shared helper startup and Zed app lifetime | Mac client and Swift helper | Start on demand and reuse until the associated Zed app exits; individual window closure does not stop it | Approved lifetime; not implemented |
 | Zed app exit and later relaunch | Swift workspace termination observer and app-instance check | Exit helper and discard bindings; new Zed session gets fresh helper tokens, with no old-token redirection | Not implemented or tested |
@@ -67,13 +74,13 @@ Add the applicable tests alongside each implemented component. Unit tests and is
 | Launcher and cleanup | Construct SSH arguments with correct quoting and the existing alias; establish forwarding within one SSH process; preserve normal and failed SSH results; run cleanup after exit; preserve the SSH result if cleanup fails; defer cleanup while SSH remains running; restore settings changed by the launcher. Reuse selected fake-SSH fixtures where useful. |
 | Swift helper logic | Suppress only when the retained source is the focused window of the foreground Zed app; allow notification when another window is foreground; reject invalid sources without selecting another window; replace bindings on rebind without mutating existing notifications; discard associations when the associated Zed app instance exits. Fake native operations for policy and lifecycle tests. |
 
-Tests for unavailable associations must follow the fallback policy once selected; this test plan does not select that policy. The accepted initial attribution race remains a documented limitation, not a guarantee that unit tests can establish or eliminate.
+Unavailable associations skip notification and report recovery guidance. Test first and changed errors, suppressed repeats, reset on success of the affected operation, independent pane diagnostic state, and unconditional manual-rebind results. Distinguish unknown tokens, unavailable sources, and transport failures; a transport timeout alone does not prove token invalidity. Preserve newer ordinary-shell caches and tmux contexts when older requests fail. The accepted initial attribution race remains a documented limitation, not a guarantee that unit tests can establish or eliminate.
 
 Keep actual tmux target selection, SSH forwarding, socket deadline behavior, macOS permissions, cross-Space and minimized-window focus, terminal mouse cleanup, and Linux executable compatibility in integration testing. Mocked outcomes do not establish that these operating-system behaviors work. Native window control and sleep/wake checks remain part of the developer checklist below.
 
 ## Developer testing checklist
 
-The user approved tracking the following engineering work for developer testing. End-to-end checks remain pending. The v1 JSON messages and framing are defined in [`protocol/README.md`](../protocol/README.md); example capture budgets, shorter sender deadlines, and launcher command spellings discussed during design are illustrative, not selected interfaces or defaults. This checklist does not close the separate user-policy decision about delivery when a source association is unavailable.
+The user approved tracking the following engineering work for developer testing. End-to-end checks remain pending. The provisional v1 JSON messages and framing are defined in [`protocol/README.md`](../protocol/README.md); example capture budgets, shorter sender deadlines, and launcher command spellings discussed during design are illustrative, not selected interfaces or defaults. Missing or invalid source associations skip notification with the approved recovery diagnostics.
 
 | Item | Developer check | Evidence needed to close |
 | --- | --- | --- |

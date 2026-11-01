@@ -40,7 +40,7 @@ A completion accepted for processing returns:
 
 `accepted` acknowledges protocol processing; it does not promise a visible notification. A failed request returns `status: "error"` with one of `invalid_request`, `unsupported_version`, `request_too_large`, `source_unavailable`, or `unknown_binding`.
 
-An absent binding is not represented as a completion request. The caller's behavior when no binding is available remains an open policy decision.
+An absent binding is not represented as a completion request. The caller skips notification and reports recovery guidance. Ordinary local shells retry capture at the next eligible launch; tmux uses explicit rebind or eligible reattachment. These caller policies and the lifecycle sequences are described in [binding state and recovery](../docs/binding-state-flows.md).
 
 ## Shared fixtures and checks
 
