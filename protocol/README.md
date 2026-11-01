@@ -48,4 +48,4 @@ An absent binding is not represented as a completion request. The caller skips n
 
 `make protocol-interop` exercises the runtime directions: Rust encodes bind and complete requests for Swift to decode, then Swift encodes bound and accepted responses for Rust to decode. `make test` runs this exchange alongside both unit suites.
 
-These definitions specify the wire contract only. Socket setup, deadlines, notification policy, and OS-level delivery are implemented and validated in their respective slices.
+These definitions specify the wire contract only. The approved [local Unix socket transport](../docs/local-socket-transport.md) defines endpoint ownership, request/response EOF checks, deadlines, and connection capacity; its implementation and real-socket validation remain pending. Helper startup, notification policy, OS-level delivery, and remote forwarding are implemented and validated in their respective slices.
