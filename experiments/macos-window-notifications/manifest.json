@@ -1,0 +1,16 @@
+{
+  "formatVersion": 2,
+  "purpose": "Shareable feasibility probe sources; not production implementation.",
+  "sourceAdjustmentNote": "The Swift driver, Python harness, and AppleScript script use explicit runtime-directory environment variables instead of paths from the original device. Other source files are unchanged.",
+  "sourceFiles": [
+    "sources/swift/WindowProbe.swift",
+    "sources/swift/ZedObjectWindows.swift",
+    "sources/swift/ZedWindows.swift",
+    "sources/swift/PrivateWindowID.swift",
+    "sources/swift/DockWindowPicker.swift",
+    "sources/swift/Info.plist",
+    "sources/python/capture-closed-window-test.py",
+    "sources/applescript/click-test.applescript",
+    "sources/applescript/Info.plist"
+  ]
+}
