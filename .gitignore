@@ -3,6 +3,8 @@
 .env.*
 !.env.example
 /.local/
+/.codex/config.toml
+/.codex/hooks/load_local_agents.py
 /target/
 /.build/
 **/xcuserdata/
