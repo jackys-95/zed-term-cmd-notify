@@ -35,7 +35,7 @@ Native OSC 9 is a conditional future design note with no implementation work in 
 
 ## Design and status
 
-The authoritative scope and initial architecture are recorded in [docs/initial-design.md](docs/initial-design.md). The Rust/Swift protocol test foundation exists; runtime delivery remains to be implemented. The helper is designed to start on demand and remain alive until the associated Zed app exits, including while individual project windows close. The race before the first focus query is accepted for now and will be revisited if observed in practical use. Detected capture changes or timeouts leave the cache empty and allow the command to proceed; local-hook integration remains to be implemented.
+The authoritative scope and initial architecture are recorded in [docs/initial-design.md](docs/initial-design.md). The protocol/test foundation and helper binding/capture foundation exist; runtime delivery remains incomplete. The helper is designed to start on demand and remain alive until the associated Zed app exits, including while individual project windows close. The race before the first focus query is accepted for now and will be revisited if observed in practical use. Detected capture changes or timeouts leave the cache empty and allow the command to proceed; local-hook integration remains to be implemented.
 
 The [lightweight implementation plan](docs/implementation-plan.md) proposes working slices, with unit tests alongside each component and integration evidence guiding subsequent iterations.
 

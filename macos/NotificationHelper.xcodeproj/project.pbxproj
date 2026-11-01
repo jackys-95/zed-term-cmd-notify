@@ -11,6 +11,9 @@
 		A0000000000000000000000E /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000009 /* XCTest.framework */; };
 		A00000000000000000000023 /* NotificationProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000025 /* NotificationProtocol.swift */; };
 		A00000000000000000000024 /* messages.json in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000026 /* messages.json */; };
+		A00000000000000000000029 /* BindingRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002B /* BindingRegistry.swift */; };
+		A0000000000000000000002A /* NotificationRequestHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002C /* NotificationRequestHandler.swift */; };
+		A0000000000000000000002E /* RetainedWindowCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000030 /* RetainedWindowCapture.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -32,6 +35,9 @@
 		A0000000000000000000000B /* NotificationHelperTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NotificationHelperTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A00000000000000000000025 /* NotificationProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationProtocol.swift; sourceTree = "<group>"; };
 		A00000000000000000000026 /* messages.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = messages.json; sourceTree = "<group>"; };
+		A0000000000000000000002B /* BindingRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BindingRegistry.swift; sourceTree = "<group>"; };
+		A0000000000000000000002C /* NotificationRequestHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRequestHandler.swift; sourceTree = "<group>"; };
+		A00000000000000000000030 /* RetainedWindowCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RetainedWindowCapture.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -76,6 +82,8 @@
 			children = (
 				A00000000000000000000022 /* App */,
 				A00000000000000000000027 /* IPC */,
+				A0000000000000000000002D /* Bindings */,
+				A00000000000000000000031 /* WindowAccess */,
 				A00000000000000000000006 /* Info.plist */,
 			);
 			path = NotificationHelper;
@@ -101,8 +109,25 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000025 /* NotificationProtocol.swift */,
+				A0000000000000000000002C /* NotificationRequestHandler.swift */,
 			);
 			path = IPC;
+			sourceTree = "<group>";
+		};
+		A0000000000000000000002D /* Bindings */ = {
+			isa = PBXGroup;
+			children = (
+				A0000000000000000000002B /* BindingRegistry.swift */,
+			);
+			path = Bindings;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000031 /* WindowAccess */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000030 /* RetainedWindowCapture.swift */,
+			);
+			path = WindowAccess;
 			sourceTree = "<group>";
 		};
 		A00000000000000000000028 /* Protocol Fixtures */ = {
@@ -206,6 +231,9 @@
 			files = (
 				A0000000000000000000000C /* NotificationHelperApp.swift in Sources */,
 				A00000000000000000000023 /* NotificationProtocol.swift in Sources */,
+				A00000000000000000000029 /* BindingRegistry.swift in Sources */,
+				A0000000000000000000002A /* NotificationRequestHandler.swift in Sources */,
+				A0000000000000000000002E /* RetainedWindowCapture.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

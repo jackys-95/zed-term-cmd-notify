@@ -1,6 +1,6 @@
 # Binding State and Recovery
 
-**Status:** Initial design. These sequences describe selected behavior and implementation requirements. They do not establish end-to-end delivery. The protocol codecs and interoperability test foundation exist; the runtime sequences below remain implementation requirements.
+**Status:** Initial design. These sequences describe selected behavior and implementation requirements. They do not establish end-to-end delivery. The protocol codecs and helper binding/capture foundation exist; shell integration, tmux publication, completion-time source validation, transport, and notification delivery remain to be integrated.
 
 This document explains how a command's notification destination survives shell caching, tmux attachment changes, and window closure. The [initial design](initial-design.md) owns scope and policy; this companion expands its state transitions for implementation and review. The [implementation plan](implementation-plan.md) records progress, and the [validation matrix](validation-matrix.md) records required evidence.
 
@@ -219,6 +219,6 @@ Repetition detection belongs to the persistent Zsh shell, with a last-reported f
 
 ## Implementation and validation boundaries
 
-The sequences specify requirements for helper source validation, completion-time rejection, notification actions, socket transport, shell recovery, and tmux integration. The [implementation plan](implementation-plan.md) tracks implementation and verification progress.
+The sequences specify behavior to implement. The helper currently looks up tokens before dispatching completion and has retained-window capture/validity support. Completion-time source rejection, notification actions, socket transport, shell recovery, and tmux integration must still connect these pieces.
 
 Validation must distinguish window closure from client detachment; preserve delivery while local tmux is detached; cover simultaneous clients and excluded entry; reject stale tokens without clearing newer context; verify ordinary cache retry and failed rebind; and run the four-terminal example with independent routing. Local and remote tmux each need end-to-end transport evidence. Codec interoperability alone does not establish these lifecycle behaviors.

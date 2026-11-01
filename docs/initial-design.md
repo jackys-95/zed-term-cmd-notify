@@ -1,6 +1,6 @@
 # Initial Design: Zed Terminal Command Notifications
 
-**Status:** Scope, Mac-side notification helper, and public Accessibility window-object baseline approved. The Rust/Swift protocol test foundation exists; runtime delivery remains to be implemented. Mac-only probes have demonstrated notification delivery, source-window focus, minimized-window restoration, and closed-window rejection.
+**Status:** Scope, Mac-side notification helper, and public Accessibility window-object baseline approved. The protocol/test foundation and helper binding/capture foundation exist; runtime delivery remains incomplete. Mac-only probes have demonstrated notification delivery, source-window focus, minimized-window restoration, and closed-window rejection.
 
 **Last reviewed:** 2026-11-01.
 

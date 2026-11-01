@@ -3,6 +3,204 @@ import Foundation
 @testable import NotificationHelper
 
 final class NotificationHelperTests: XCTestCase {
+    @MainActor
+    func testRetainedWindowCaptureKeepsTheStableFocusedZedWindow() throws {
+        let environment = FakeRetainedWindowEnvironment()
+        let capture = RetainedWindowCaptureCoordinator(environment: environment)
+
+        let source = try capture.capture()
+
+        XCTAssertTrue(source.application === environment.zedApplication)
+        XCTAssertTrue(source.element === environment.focusedWindow)
+        XCTAssertEqual(source.processIdentifier, environment.zedApplication.processIdentifier)
+        XCTAssertTrue(source.isValid())
+        XCTAssertEqual(environment.lastConfiguredTimeout, 0.75)
+    }
+
+    @MainActor
+    func testRetainedWindowCaptureRequiresAccessibilityAndConfiguresTimeout() {
+        let untrustedEnvironment = FakeRetainedWindowEnvironment()
+        untrustedEnvironment.accessibilityTrusted = false
+        assertCaptureError(
+            .accessibilityPermissionRequired,
+            in: untrustedEnvironment
+        )
+
+        let timeoutFailureEnvironment = FakeRetainedWindowEnvironment()
+        timeoutFailureEnvironment.timeoutConfigurationSucceeds = false
+        assertCaptureError(
+            .timeoutConfigurationFailed,
+            in: timeoutFailureEnvironment
+        )
+        XCTAssertEqual(timeoutFailureEnvironment.lastConfiguredTimeout, 0.75)
+    }
+
+    @MainActor
+    func testRetainedWindowCaptureRequiresZedToBeFrontmost() {
+        let environment = FakeRetainedWindowEnvironment()
+        environment.currentFrontmostApplication = FakeCaptureApplication(
+            processIdentifier: 83,
+            bundleIdentifier: "com.example.other"
+        )
+
+        assertCaptureError(.zedNotFrontmost, in: environment)
+    }
+
+    @MainActor
+    func testRetainedWindowCaptureRejectsMissingOrInvalidFocusedWindows() {
+        let missingWindowEnvironment = FakeRetainedWindowEnvironment()
+        missingWindowEnvironment.focusedWindow = nil
+        assertCaptureError(
+            .focusedWindowUnavailable,
+            in: missingWindowEnvironment
+        )
+
+        let foreignWindowEnvironment = FakeRetainedWindowEnvironment()
+        foreignWindowEnvironment.focusedWindow?.ownerProcessIdentifier = 83
+        assertCaptureError(.invalidWindow, in: foreignWindowEnvironment)
+
+        let nonWindowEnvironment = FakeRetainedWindowEnvironment()
+        nonWindowEnvironment.focusedWindow?.role = "AXButton"
+        assertCaptureError(.invalidWindow, in: nonWindowEnvironment)
+    }
+
+    @MainActor
+    func testRetainedWindowCaptureRejectsFocusOrForegroundChanges() {
+        let changedWindowEnvironment = FakeRetainedWindowEnvironment()
+        changedWindowEnvironment.focusedWindowResponses = [
+            changedWindowEnvironment.focusedWindow,
+            FakeCaptureWindow(
+                ownerProcessIdentifier: changedWindowEnvironment.zedApplication.processIdentifier,
+                role: "AXWindow"
+            ),
+        ]
+        assertCaptureError(
+            .focusChangedDuringCapture,
+            in: changedWindowEnvironment
+        )
+
+        let changedApplicationEnvironment = FakeRetainedWindowEnvironment()
+        let otherApplication = FakeCaptureApplication(
+            processIdentifier: 83,
+            bundleIdentifier: "com.example.other"
+        )
+        changedApplicationEnvironment.frontmostApplicationResponses = [
+            changedApplicationEnvironment.zedApplication,
+            changedApplicationEnvironment.zedApplication,
+            otherApplication,
+        ]
+        assertCaptureError(
+            .focusChangedDuringCapture,
+            in: changedApplicationEnvironment
+        )
+    }
+
+    @MainActor
+    func testRetainedSourceBecomesInvalidWhenItsWindowOrApplicationChanges() throws {
+        let environment = FakeRetainedWindowEnvironment()
+        let source = try RetainedWindowCaptureCoordinator(environment: environment).capture()
+        XCTAssertTrue(source.isValid())
+
+        environment.focusedWindow?.role = "AXButton"
+        XCTAssertFalse(source.isValid())
+
+        environment.focusedWindow?.role = "AXWindow"
+        environment.zedApplication.terminated = true
+        XCTAssertFalse(source.isValid())
+    }
+
+    @MainActor
+    func testCompletionUsesTheSourceCapturedByItsBinding() throws {
+        let leftSource = TestSourceWindow()
+        let rightSource = TestSourceWindow()
+        var sources = [leftSource, rightSource].makeIterator()
+        var bindingIDs = ["binding_left", "binding_right"].makeIterator()
+        var deliveredCompletions: [(TestSourceWindow, UInt64, UInt8)] = []
+
+        let handler = NotificationRequestHandler<TestSourceWindow>(
+            captureSource: { sources.next() },
+            deliverCompletion: { source, elapsedMS, exitCode in
+                deliveredCompletions.append((source, elapsedMS, exitCode))
+            },
+            makeBindingID: { try! XCTUnwrap(bindingIDs.next()) }
+        )
+
+        let leftBindingID = try bindingID(from: handler.handle(.bind))
+        let rightBindingID = try bindingID(from: handler.handle(.bind))
+        XCTAssertNotEqual(leftBindingID, rightBindingID)
+
+        let response = handler.handle(
+            .complete(bindingID: leftBindingID, elapsedMS: 31000, exitCode: 7)
+        )
+
+        XCTAssertEqual(response, .accepted)
+        XCTAssertEqual(deliveredCompletions.count, 1)
+        XCTAssertTrue(deliveredCompletions[0].0 === leftSource)
+        XCTAssertEqual(deliveredCompletions[0].1, 31000)
+        XCTAssertEqual(deliveredCompletions[0].2, 7)
+
+        let rightResponse = handler.handle(
+            .complete(bindingID: rightBindingID, elapsedMS: 42000, exitCode: 0)
+        )
+        XCTAssertEqual(rightResponse, .accepted)
+        XCTAssertEqual(deliveredCompletions.count, 2)
+        XCTAssertTrue(deliveredCompletions[1].0 === rightSource)
+    }
+
+    @MainActor
+    func testBindReportsSourceUnavailableWhenCaptureFails() {
+        let handler = NotificationRequestHandler<TestSourceWindow>(
+            captureSource: { nil },
+            deliverCompletion: { _, _, _ in
+                XCTFail("No completion should be delivered without a binding")
+            }
+        )
+
+        XCTAssertEqual(handler.handle(.bind), .error(.sourceUnavailable))
+    }
+
+    @MainActor
+    func testCompletionRejectsUnknownBinding() {
+        var delivered = false
+        let handler = NotificationRequestHandler<TestSourceWindow>(
+            captureSource: { TestSourceWindow() },
+            deliverCompletion: { _, _, _ in delivered = true }
+        )
+
+        let response = handler.handle(
+            .complete(bindingID: "unknown_binding", elapsedMS: 1, exitCode: 0)
+        )
+
+        XCTAssertEqual(response, .error(.unknownBinding))
+        XCTAssertFalse(delivered)
+    }
+
+    @MainActor
+    func testDuplicateGeneratedBindingIDDoesNotReplaceExistingSource() throws {
+        let firstSource = TestSourceWindow()
+        let secondSource = TestSourceWindow()
+        var sources = [firstSource, secondSource].makeIterator()
+        var bindingIDs = ["binding_shared", "binding_shared", "binding_next"].makeIterator()
+        var deliveredSources: [TestSourceWindow] = []
+
+        let handler = NotificationRequestHandler<TestSourceWindow>(
+            captureSource: { sources.next() },
+            deliverCompletion: { source, _, _ in deliveredSources.append(source) },
+            makeBindingID: { try! XCTUnwrap(bindingIDs.next()) }
+        )
+
+        let firstBindingID = try bindingID(from: handler.handle(.bind))
+        let secondBindingID = try bindingID(from: handler.handle(.bind))
+
+        XCTAssertEqual(firstBindingID, "binding_shared")
+        XCTAssertEqual(secondBindingID, "binding_next")
+        XCTAssertEqual(
+            handler.handle(.complete(bindingID: firstBindingID, elapsedMS: 1, exitCode: 0)),
+            .accepted
+        )
+        XCTAssertTrue(deliveredSources.first === firstSource)
+    }
+
     func testSharedValidRequestFixturesDecodeAndRoundTrip() throws {
         for fixture in try fixtures(named: "valid_requests") {
             let payload = try jsonData(fixture["payload"])
@@ -182,6 +380,36 @@ final class NotificationHelperTests: XCTestCase {
         return try XCTUnwrap(root[key] as? [[String: Any]])
     }
 
+    @MainActor
+    private func assertCaptureError<Environment: RetainedWindowEnvironment>(
+        _ expected: RetainedWindowCaptureError,
+        in environment: Environment,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let capture = RetainedWindowCaptureCoordinator(environment: environment)
+        XCTAssertThrowsError(try capture.capture(), file: file, line: line) { error in
+            XCTAssertEqual(
+                error as? RetainedWindowCaptureError,
+                expected,
+                file: file,
+                line: line
+            )
+        }
+    }
+
+    private func bindingID(
+        from response: NotificationProtocol.Response,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> String {
+        guard case let .bound(bindingID) = response else {
+            XCTFail("Expected a bound response", file: file, line: line)
+            throw NotificationProtocolFailure.invalidResponse
+        }
+        return bindingID
+    }
+
     private func fixtureRoot() throws -> [String: Any] {
         let url = try XCTUnwrap(
             Bundle(for: Self.self).url(forResource: "messages", withExtension: "json")
@@ -209,5 +437,101 @@ final class NotificationHelperTests: XCTestCase {
             NSDictionary(dictionary: expectedObject as? [String: Any] ?? [:]),
             name as? String ?? "JSON payload"
         )
+    }
+}
+
+private final class TestSourceWindow {}
+
+@MainActor
+private final class FakeCaptureApplication {
+    let processIdentifier: pid_t
+    let bundleIdentifier: String?
+    var terminated = false
+
+    init(processIdentifier: pid_t, bundleIdentifier: String?) {
+        self.processIdentifier = processIdentifier
+        self.bundleIdentifier = bundleIdentifier
+    }
+}
+
+@MainActor
+private final class FakeCaptureWindow {
+    var ownerProcessIdentifier: pid_t
+    var role: String?
+
+    init(ownerProcessIdentifier: pid_t, role: String?) {
+        self.ownerProcessIdentifier = ownerProcessIdentifier
+        self.role = role
+    }
+}
+
+@MainActor
+private final class FakeRetainedWindowEnvironment: RetainedWindowEnvironment {
+    private(set) var lastConfiguredTimeout: Float?
+    var accessibilityTrusted = true
+    var timeoutConfigurationSucceeds = true
+    var currentFrontmostApplication: FakeCaptureApplication?
+    var focusedWindow: FakeCaptureWindow?
+    var frontmostApplicationResponses: [FakeCaptureApplication?] = []
+    var focusedWindowResponses: [FakeCaptureWindow?] = []
+    let zedApplication = FakeCaptureApplication(
+        processIdentifier: 41,
+        bundleIdentifier: RetainedWindowCaptureCoordinator<FakeRetainedWindowEnvironment>
+            .zedBundleIdentifier
+    )
+
+    init() {
+        currentFrontmostApplication = zedApplication
+        focusedWindow = FakeCaptureWindow(
+            ownerProcessIdentifier: zedApplication.processIdentifier,
+            role: "AXWindow"
+        )
+    }
+
+    func accessibilityIsTrusted() -> Bool {
+        accessibilityTrusted
+    }
+
+    func configureMessagingTimeout(_ timeout: Float) -> Bool {
+        lastConfiguredTimeout = timeout
+        return timeoutConfigurationSucceeds
+    }
+
+    func frontmostApplication() -> FakeCaptureApplication? {
+        guard !frontmostApplicationResponses.isEmpty else {
+            return currentFrontmostApplication
+        }
+        return frontmostApplicationResponses.removeFirst()
+    }
+
+    func bundleIdentifier(for application: FakeCaptureApplication) -> String? {
+        application.bundleIdentifier
+    }
+
+    func isTerminated(_ application: FakeCaptureApplication) -> Bool {
+        application.terminated
+    }
+
+    func processIdentifier(for application: FakeCaptureApplication) -> pid_t {
+        application.processIdentifier
+    }
+
+    func focusedWindow(for application: FakeCaptureApplication) -> FakeCaptureWindow? {
+        guard !focusedWindowResponses.isEmpty else {
+            return focusedWindow
+        }
+        return focusedWindowResponses.removeFirst()
+    }
+
+    func ownerProcessIdentifier(of window: FakeCaptureWindow) -> pid_t? {
+        window.ownerProcessIdentifier
+    }
+
+    func role(of window: FakeCaptureWindow) -> String? {
+        window.role
+    }
+
+    func sameWindow(_ lhs: FakeCaptureWindow, _ rhs: FakeCaptureWindow) -> Bool {
+        lhs === rhs
     }
 }
