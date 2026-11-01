@@ -1,0 +1,201 @@
+{
+  "valid_requests": [
+    {
+      "name": "bind",
+      "payload": {
+        "version": 1,
+        "type": "bind"
+      }
+    },
+    {
+      "name": "complete",
+      "payload": {
+        "version": 1,
+        "type": "complete",
+        "binding_id": "fixture_binding_01",
+        "elapsed_ms": 31000,
+        "exit_code": 0
+      }
+    }
+  ],
+  "valid_responses": [
+    {
+      "name": "bound",
+      "payload": {
+        "version": 1,
+        "status": "bound",
+        "binding_id": "fixture_binding_01"
+      }
+    },
+    {
+      "name": "accepted",
+      "payload": {
+        "version": 1,
+        "status": "accepted"
+      }
+    },
+    {
+      "name": "unknown-binding",
+      "payload": {
+        "version": 1,
+        "status": "error",
+        "error": "unknown_binding"
+      }
+    }
+  ],
+  "invalid_requests": [
+    {
+      "name": "unsupported-version",
+      "payload": {
+        "version": 2,
+        "type": "bind"
+      },
+      "error": "unsupported_version"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "version": 1,
+        "type": "bind",
+        "command": "must-not-be-sent"
+      },
+      "error": "invalid_request"
+    },
+    {
+      "name": "invalid-binding",
+      "payload": {
+        "version": 1,
+        "type": "complete",
+        "binding_id": "bad binding",
+        "elapsed_ms": 31000,
+        "exit_code": 0
+      },
+      "error": "invalid_binding"
+    },
+    {
+      "name": "invalid-exit-code",
+      "payload": {
+        "version": 1,
+        "type": "complete",
+        "binding_id": "fixture_binding_01",
+        "elapsed_ms": 31000,
+        "exit_code": 256
+      },
+      "error": "invalid_request"
+    },
+    {
+      "name": "missing-version",
+      "payload": {
+        "type": "bind"
+      },
+      "error": "invalid_request"
+    },
+    {
+      "name": "missing-completion-field",
+      "payload": {
+        "version": 1,
+        "type": "complete",
+        "binding_id": "fixture_binding_01",
+        "elapsed_ms": 31000
+      },
+      "error": "invalid_request"
+    },
+    {
+      "name": "negative-elapsed-time",
+      "payload": {
+        "version": 1,
+        "type": "complete",
+        "binding_id": "fixture_binding_01",
+        "elapsed_ms": -1,
+        "exit_code": 0
+      },
+      "error": "invalid_request"
+    },
+    {
+      "name": "fractional-elapsed-time",
+      "payload": {
+        "version": 1,
+        "type": "complete",
+        "binding_id": "fixture_binding_01",
+        "elapsed_ms": 1.5,
+        "exit_code": 0
+      },
+      "error": "invalid_request"
+    },
+    {
+      "name": "boolean-exit-code",
+      "payload": {
+        "version": 1,
+        "type": "complete",
+        "binding_id": "fixture_binding_01",
+        "elapsed_ms": 31000,
+        "exit_code": true
+      },
+      "error": "invalid_request"
+    }
+  ],
+  "invalid_responses": [
+    {
+      "name": "unsupported-version",
+      "payload": {
+        "version": 2,
+        "status": "accepted"
+      },
+      "error": "unsupported_version"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "version": 1,
+        "status": "accepted",
+        "details": "unexpected"
+      },
+      "error": "invalid_response"
+    },
+    {
+      "name": "unknown-error-code",
+      "payload": {
+        "version": 1,
+        "status": "error",
+        "error": "unrecognized"
+      },
+      "error": "invalid_response"
+    },
+    {
+      "name": "missing-binding-id",
+      "payload": {
+        "version": 1,
+        "status": "bound"
+      },
+      "error": "invalid_response"
+    },
+    {
+      "name": "invalid-binding-id",
+      "payload": {
+        "version": 1,
+        "status": "bound",
+        "binding_id": "bad binding"
+      },
+      "error": "invalid_response"
+    }
+  ],
+  "invalid_json": [
+    {
+      "name": "truncated-json",
+      "payload": "{"
+    },
+    {
+      "name": "null",
+      "payload": "null"
+    },
+    {
+      "name": "multiple-values",
+      "payload": "{\"version\":1,\"type\":\"bind\"} {}"
+    }
+  ],
+  "boundaries": {
+    "max_frame_bytes": 4096,
+    "max_binding_id_bytes": 128,
+    "binding_id_character": "a"
+  }
+}

@@ -127,7 +127,7 @@ Local hooks load in the Mac's interactive Zsh environment, normally through `~/.
 
 Local completion requests use the Rust local client with bounded connection and delivery deadlines. An unavailable helper or failed request must preserve the command's exit status and allow the prompt to return. Ordinary local binding recovery and local tmux session recovery follow the distinct rules above.
 
-The approved remote sender is a short-lived Rust executable invoked by the Zsh completion hook. It sends one completion event to the registered loopback endpoint through the SSH reverse forward, then exits. Build a Linux binary for the remote host's architecture and copy it alongside the remote Zsh scripts; AL2023 does not need Rust or Cargo installed. No remote sender daemon is required. Connection and delivery attempts must have bounded deadlines, and sender failure must preserve the command's exit status and allow the prompt to return. The event protocol, build target, and concrete deadline remain to be selected and validated.
+The approved remote sender is a short-lived Rust executable invoked by the Zsh completion hook. It sends one completion event to the registered loopback endpoint through the SSH reverse forward, then exits. Build a Linux binary for the remote host's architecture and copy it alongside the remote Zsh scripts; AL2023 does not need Rust or Cargo installed. No remote sender daemon is required. Connection and delivery attempts must have bounded deadlines, and sender failure must preserve the command's exit status and allow the prompt to return. The v1 message contract and local codec checks are recorded in the [protocol note](../protocol/README.md); socket transport, the Linux build target, and concrete deadlines remain to be selected and validated.
 
 The baseline requires manual reconnect and introduces no always-running daemon or replay service. If notification setup fails, SSH should still proceed with a clear indication that notifications are unavailable. Local command execution and tmux attachment must likewise proceed when the helper is unavailable. Hooks around the remote launcher or local tmux entry must not treat SSH exit or tmux detach as an individual pane command completion.
 
@@ -213,7 +213,7 @@ Eligibility checks must cover regular Zed terminals, ordinary iTerm2/cmux/macOS 
 
 ## Open decisions
 
-Developer testing for remote tmux registration, terminal cleanup, protocol selection, deadlines, Linux builds, CLI behavior, and focus latency is tracked in the [developer testing checklist](validation-matrix.md#developer-testing-checklist). Extend that matrix with the local tmux obligations above before implementing the shared tmux slice. These engineering checks remain pending and do not resolve the policy decisions below.
+Developer testing for remote tmux registration, terminal cleanup, transport integration, deadlines, Linux builds, CLI behavior, and focus latency is tracked in the [developer testing checklist](validation-matrix.md#developer-testing-checklist). Extend that matrix with the local tmux obligations above before implementing the shared tmux slice. These engineering checks remain pending and do not resolve the policy decisions below.
 
 - What capture timeout keeps initial binding and rebinding responsive?
 - Which tmux entry mechanism reliably binds the actual selected or newly created session before detachment, including default selection, create-or-attach, and direct SSH entry?

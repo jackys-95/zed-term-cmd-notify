@@ -9,6 +9,8 @@
 		A0000000000000000000000C /* NotificationHelperApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000005 /* NotificationHelperApp.swift */; };
 		A0000000000000000000000D /* NotificationHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000008 /* NotificationHelperTests.swift */; };
 		A0000000000000000000000E /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000009 /* XCTest.framework */; };
+		A00000000000000000000023 /* NotificationProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000025 /* NotificationProtocol.swift */; };
+		A00000000000000000000024 /* messages.json in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000026 /* messages.json */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -28,6 +30,8 @@
 		A00000000000000000000009 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		A0000000000000000000000A /* NotificationHelper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NotificationHelper.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A0000000000000000000000B /* NotificationHelperTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NotificationHelperTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000025 /* NotificationProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationProtocol.swift; sourceTree = "<group>"; };
+		A00000000000000000000026 /* messages.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = messages.json; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -53,6 +57,7 @@
 			children = (
 				A00000000000000000000004 /* NotificationHelper */,
 				A00000000000000000000007 /* NotificationHelperTests */,
+				A00000000000000000000028 /* Protocol Fixtures */,
 				A00000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -70,6 +75,7 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000022 /* App */,
+				A00000000000000000000027 /* IPC */,
 				A00000000000000000000006 /* Info.plist */,
 			);
 			path = NotificationHelper;
@@ -89,6 +95,22 @@
 				A00000000000000000000005 /* NotificationHelperApp.swift */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000027 /* IPC */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000025 /* NotificationProtocol.swift */,
+			);
+			path = IPC;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000028 /* Protocol Fixtures */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000026 /* messages.json */,
+			);
+			path = ../protocol/fixtures;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -170,7 +192,9 @@
 		A00000000000000000000014 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = ();
+			files = (
+				A00000000000000000000024 /* messages.json in Resources */,
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
@@ -181,6 +205,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A0000000000000000000000C /* NotificationHelperApp.swift in Sources */,
+				A00000000000000000000023 /* NotificationProtocol.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -225,6 +250,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = NotificationHelper/Info.plist;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
