@@ -35,6 +35,30 @@ Write code documentation for a developer who understands programming and this pr
 
 Before finishing a documentation change, check that a new reader can explain the component's purpose, use its API correctly, and identify its important failure conditions without knowing the implementation history.
 
+## Mermaid diagrams
+
+For each changed Mermaid block, extract the contents without the Markdown fences into a temporary `.mmd` file. Render each block and inspect the SVG for clipping or overlapping labels:
+
+```sh
+npx --yes --package @mermaid-js/mermaid-cli mmdc \
+  -i /tmp/diagram.mmd \
+  -o /tmp/diagram.svg
+open -a Firefox /tmp/diagram.svg
+```
+
+A successful Mermaid CLI run confirms that the diagram parses and produces an SVG. Repeat the command for every changed block. For GitHub-bound Markdown, check the GitHub preview when visual parity matters because the local renderer can use different versions or styling.
+
+For syntax-only validation, Mermaid's JavaScript API provides `mermaid.parse(source)`. The `npx --package` option makes package executables available on `PATH`, but Node does not automatically resolve the package from there. This command locates the temporary package directory through `mmdc` and calls `mermaid.parse()` without rendering:
+
+```sh
+npx --yes \
+  --package=mermaid \
+  --package=@mermaid-js/mermaid-cli \
+  --call 'NODE_PATH="$(dirname "$(dirname "$(command -v mmdc)")")" node -e "const fs = require(\"node:fs\"); const mermaid = require(\"mermaid\").default; mermaid.parse(fs.readFileSync(process.argv[1], \"utf8\")).then(() => console.log(\"Mermaid syntax OK\")).catch((error) => { console.error(error); process.exit(1); });" /tmp/diagram.mmd'
+```
+
+A successful parse confirms syntax only; it does not check text sizing, clipping, or layout. Repeat for each changed Mermaid block.
+
 ## Protect local identifiers
 
 Treat machine-specific values in terminal output, logs, and other local evidence as private. Do not copy real values into Git-tracked files or commit messages. This includes usernames, hostnames, absolute paths, terminal or device names, socket names, transient run identifiers, recorded clock times, and credentials.
