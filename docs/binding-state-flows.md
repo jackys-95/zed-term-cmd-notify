@@ -61,7 +61,7 @@ sequenceDiagram
     B->>S: Successful attach replaces context with token_B
     Note over A,S: A may still be attached
     B->>S: Detach client
-    Note over S,H: Window B remains open; context remains token_B
+    Note over S,H: Window B remains open, and context remains token_B
     P->>S: Read context at qualifying completion
     S-->>P: token_B
     P->>H: Complete using token_B
@@ -84,7 +84,7 @@ sequenceDiagram
     participant P as Pane Zsh hook
     participant H as Mac helper via local client
     participant A as Eligible terminal in window A
-    Note over S,H: S stores token_B; helper retains source B
+    Note over S,H: S stores token_B, and helper retains source B
     B->>B: Window closes
     P->>S: Read context at qualifying completion
     S-->>P: token_B
@@ -92,7 +92,7 @@ sequenceDiagram
     H->>H: Lookup token and validate retained source
     H-->>P: Reject unavailable source or unknown token
     P->>P: Skip notification and report recovery guidance
-    Note over S,H: S may still store token_B; helper cannot deliver with it
+    Note over S,H: S may still store token_B, and helper cannot deliver with it
     A->>H: Explicit rebind captures A
     H-->>A: Fresh token_A2
     A->>S: Replace context with token_A2
@@ -144,7 +144,7 @@ sequenceDiagram
     H-->>C: unknown_binding
     C-->>Z: Structured failure result
     Z->>Z: Clear matching cache and report retry guidance
-    Note over Z,H: Failed completion is skipped; no recapture now
+    Note over Z,H: Failed completion is skipped, with no recapture now
     Z->>C: Next eligible launch requests bind
     C->>H: Capture foreground source A
     H-->>C: Fresh token_A2
