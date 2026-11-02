@@ -7,6 +7,11 @@ final class NotificationHelperApp: NSObject, NSApplicationDelegate {
     private var requestHandler: NotificationRequestHandler<RetainedSourceWindow>?
     private var localSocketServer: LocalSocketServer?
 
+    /// Reports whether app startup should resolve and open the default endpoint.
+    static func shouldStartSocketServer(environment: [String: String]) -> Bool {
+        environment["ZED_NOTIFY_TEST_DISABLE_SOCKET_SERVER"] != "1"
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         let handler = NotificationRequestHandler(
             captureSource: { [windowCapture] in
@@ -16,7 +21,7 @@ final class NotificationHelperApp: NSObject, NSApplicationDelegate {
         )
         requestHandler = handler
 
-        guard ProcessInfo.processInfo.environment["ZED_NOTIFY_TEST_DISABLE_SOCKET_SERVER"] != "1" else {
+        guard Self.shouldStartSocketServer(environment: ProcessInfo.processInfo.environment) else {
             return
         }
         do {

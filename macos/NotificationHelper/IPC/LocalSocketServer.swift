@@ -69,6 +69,14 @@ final class LocalSocketServer: @unchecked Sendable {
     private var wakeWrite: Int32 = -1
     private var started = false
 
+    /// Creates a server with a validated endpoint path and request handler.
+    ///
+    /// Path requirements are defined by `validateEndpointPath(_:)`. Filesystem
+    /// setup and worker launch occur when the app calls `start()`.
+    /// The handler receives validated requests on the main actor.
+    ///
+    /// - Throws: `invalidEndpoint` for an invalid pathname, or `endpointTooLong`
+    ///   when the encoded pathname and terminating NUL exceed the socket field.
     init(
         endpointPath: String,
         configuration: LocalSocketServerConfiguration = .init(),
@@ -79,10 +87,23 @@ final class LocalSocketServer: @unchecked Sendable {
         requestHandler = handler
     }
 
+    /// Returns the helper socket path under the current user's Application Support.
+    ///
+    /// Uses `HOME` to form `Library/Application Support/zed-term-cmd-notify/helper.sock`.
+    /// Server initialization validates the returned path before startup.
+    ///
+    /// - Throws: `invalidEndpoint` when `HOME` is missing or empty.
     static func defaultEndpointPath() throws -> String {
         try LocalSocketEndpoint.defaultPath()
     }
 
+    /// Checks an absolute pathname before the server accesses the filesystem.
+    ///
+    /// The pathname must contain no NUL and use at most 103 UTF-8 bytes, leaving
+    /// one byte for the terminating NUL in the socket address.
+    ///
+    /// - Throws: `invalidEndpoint` for a relative path or embedded NUL, or
+    ///   `endpointTooLong` for an encoded path that exceeds the limit.
     static func validateEndpointPath(_ path: String) throws {
         try LocalSocketOperations.validatePath(path)
     }
@@ -91,6 +112,9 @@ final class LocalSocketServer: @unchecked Sendable {
     ///
     /// Repeated calls while started return without launching additional workers.
     /// Startup errors close acquired resources and propagate to the app.
+    ///
+    /// - Throws: Errors for invalid capacity settings or unsafe endpoint entries,
+    ///   a held endpoint lock, or a failed filesystem or socket operation.
     func start() throws {
         condition.lock()
         guard !started else {

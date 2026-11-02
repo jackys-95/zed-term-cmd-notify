@@ -18,16 +18,30 @@ private struct FileIdentity: Equatable {
 ///
 /// The server opens the endpoint before starting workers and closes it after
 /// they exit. The lock stays held through socket cleanup. Only a socket with the
-/// recorded device and inode is removed during normal shutdown.
+/// recorded device and inode is removed during startup rollback or shutdown.
 final class LocalSocketEndpoint {
     let path: String
     private(set) var listener: Int32 = -1
     private var lockDescriptor: Int32 = -1
     private var socketIdentity: FileIdentity?
+    private let listenOperation: (Int32, Int32) -> Int32
 
-    init(path: String) throws {
+    /// Creates an endpoint for `path` and its listening operation.
+    ///
+    /// The default operation calls Darwin's `listen`. Tests can inject a
+    /// controlled failure after binding to verify startup cleanup.
+    /// Path validation follows `LocalSocketServer.validateEndpointPath(_:)`
+    /// and completes before filesystem access.
+    ///
+    /// - Throws: `invalidEndpoint` for an invalid pathname, or `endpointTooLong`
+    ///   when its encoded length exceeds the socket address limit.
+    init(
+        path: String,
+        listenOperation: @escaping (Int32, Int32) -> Int32 = { Darwin.listen($0, $1) }
+    ) throws {
         try LocalSocketOperations.validatePath(path)
         self.path = path
+        self.listenOperation = listenOperation
     }
 
     static func defaultPath() throws -> String {
@@ -68,9 +82,7 @@ final class LocalSocketEndpoint {
             listener = -1
         }
 
-        if let socketIdentity, let current = fileIdentity(at: path), current == socketIdentity {
-            _ = path.withCString { Darwin.unlink($0) }
-        }
+        removeSocketIfUnchanged()
         socketIdentity = nil
 
         if lockDescriptor >= 0 {
@@ -78,6 +90,15 @@ final class LocalSocketEndpoint {
             _ = Darwin.close(lockDescriptor)
             lockDescriptor = -1
         }
+    }
+
+    private func removeSocketIfUnchanged() {
+        guard let socketIdentity,
+              fileIdentity(at: path) == socketIdentity
+        else {
+            return
+        }
+        _ = path.withCString { Darwin.unlink($0) }
     }
 
     private var directoryPath: String {
@@ -298,37 +319,44 @@ final class LocalSocketEndpoint {
             throw LocalSocketServerError.socketOperation(error)
         }
 
-        guard path.withCString({ Darwin.chmod($0, mode_t(0o600)) }) == 0 else {
-            let error = errno
-            _ = Darwin.close(descriptor)
-            _ = path.withCString { Darwin.unlink($0) }
-            throw LocalSocketServerError.socketOperation(error)
+        // Record ownership before chmod, listen, or the final lstat can fail.
+        // The outer startup cleanup then removes this entry only while it still
+        // has the same device and inode.
+        listener = descriptor
+        var boundStatus = stat()
+        guard path.withCString({ Darwin.lstat($0, &boundStatus) }) == 0 else {
+            throw LocalSocketServerError.socketOperation(errno)
         }
-        guard Darwin.listen(descriptor, backlog) == 0 else {
-            let error = errno
-            _ = Darwin.close(descriptor)
-            _ = path.withCString { Darwin.unlink($0) }
-            throw LocalSocketServerError.socketOperation(error)
+        guard
+            boundStatus.st_uid == geteuid(),
+            boundStatus.st_mode & mode_t(S_IFMT) == mode_t(S_IFSOCK)
+        else {
+            throw LocalSocketServerError.invalidEndpoint
+        }
+        let boundIdentity = FileIdentity(boundStatus)
+        socketIdentity = boundIdentity
+
+        guard path.withCString({ Darwin.chmod($0, mode_t(0o600)) }) == 0 else {
+            throw LocalSocketServerError.socketOperation(errno)
+        }
+        guard listenOperation(descriptor, backlog) == 0 else {
+            throw LocalSocketServerError.socketOperation(errno)
         }
 
         var status = stat()
         guard path.withCString({ Darwin.lstat($0, &status) }) == 0 else {
-            let error = errno
-            _ = Darwin.close(descriptor)
-            _ = path.withCString { Darwin.unlink($0) }
-            throw LocalSocketServerError.socketOperation(error)
+            throw LocalSocketServerError.socketOperation(errno)
+        }
+        guard FileIdentity(status) == boundIdentity else {
+            throw LocalSocketServerError.invalidEndpoint
         }
         guard
             status.st_uid == geteuid(),
             status.st_mode & mode_t(S_IFMT) == mode_t(S_IFSOCK),
             status.st_mode & mode_t(0o7777) == mode_t(0o600)
         else {
-            _ = Darwin.close(descriptor)
             throw LocalSocketServerError.invalidEndpoint
         }
-
-        listener = descriptor
-        socketIdentity = FileIdentity(status)
     }
 
     private func fileIdentity(at path: String) -> FileIdentity? {

@@ -64,6 +64,67 @@ final class LocalSocketServerTests: XCTestCase {
     }
 
     @MainActor
+    func testStartupFailureRemovesItsOwnedSocket() throws {
+        let testEndpoint = try SocketTestEndpoint()
+        let endpoint = try LocalSocketEndpoint(
+            path: testEndpoint.socketPath,
+            listenOperation: { _, _ in
+                errno = EIO
+                return -1
+            }
+        )
+
+        XCTAssertThrowsError(try endpoint.openListener(backlog: 1)) { error in
+            guard case LocalSocketServerError.socketOperation(let code) = error,
+                  code == EIO
+            else {
+                return XCTFail("Expected the injected listen failure")
+            }
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: testEndpoint.socketPath))
+    }
+
+    @MainActor
+    func testStartupFailurePreservesReplacementEndpointEntry() throws {
+        let testEndpoint = try SocketTestEndpoint()
+        let replacement = Data("replacement".utf8)
+        var replacementError: Error?
+        let endpoint = try LocalSocketEndpoint(
+            path: testEndpoint.socketPath,
+            listenOperation: { _, _ in
+                // This operation runs after bind and identity capture. Replace
+                // the pathname before returning a controlled startup failure.
+                do {
+                    try FileManager.default.removeItem(atPath: testEndpoint.socketPath)
+                    try replacement.write(
+                        to: URL(fileURLWithPath: testEndpoint.socketPath)
+                    )
+                } catch {
+                    replacementError = error
+                }
+                errno = EIO
+                return -1
+            }
+        )
+
+        XCTAssertThrowsError(try endpoint.openListener(backlog: 1)) { error in
+            guard case LocalSocketServerError.socketOperation(let code) = error,
+                  code == EIO
+            else {
+                return XCTFail("Expected the injected listen failure")
+            }
+        }
+        XCTAssertNil(replacementError)
+        XCTAssertEqual(
+            try Data(contentsOf: URL(fileURLWithPath: testEndpoint.socketPath)),
+            replacement
+        )
+        var status = stat()
+        XCTAssertEqual(testEndpoint.socketPath.withCString { lstat($0, &status) }, 0)
+        XCTAssertEqual(status.st_mode & mode_t(S_IFMT), mode_t(S_IFREG))
+    }
+
+    @MainActor
     func testConcurrentStartupLeavesOneLiveEndpointOwner() async throws {
         let endpoint = try SocketTestEndpoint()
         let servers = try (0..<2).map { _ in
@@ -195,9 +256,20 @@ final class LocalSocketServerTests: XCTestCase {
     @MainActor
     func testPeerDisconnectDoesNotPreventTheNextRequest() async throws {
         let endpoint = try SocketTestEndpoint()
+        let handlerEntered = DispatchSemaphore(value: 0)
+        let allowResponse = DispatchSemaphore(value: 0)
         var handlerCalls = 0
+        var handlerWaitTimedOut = false
         let server = try makeServer(endpoint: endpoint) { _ in
             handlerCalls += 1
+            if handlerCalls == 1 {
+                handlerEntered.signal()
+                // The detached client closes its descriptor before releasing
+                // this main-actor handler.
+                if allowResponse.wait(timeout: .now() + .seconds(5)) == .timedOut {
+                    handlerWaitTimedOut = true
+                }
+            }
             return .bound(bindingID: "test_binding")
         }
         try server.start()
@@ -205,13 +277,20 @@ final class LocalSocketServerTests: XCTestCase {
 
         try await Task.detached {
             let descriptor = try connectSocket(endpoint.socketPath)
-            defer { _ = Darwin.close(descriptor) }
+            defer {
+                _ = Darwin.close(descriptor)
+                allowResponse.signal()
+            }
             try sendBytes(bindFrame(), to: descriptor)
             guard Darwin.shutdown(descriptor, SHUT_WR) == 0 else {
                 throw SocketTestError.systemCall(errno)
             }
+            guard waitForSignal(handlerEntered, timeout: .seconds(5)) else {
+                throw SocketTestError.synchronizationTimedOut("the first handler")
+            }
         }.value
 
+        XCTAssertFalse(handlerWaitTimedOut)
         let response = try await exchange(endpoint: endpoint, bytes: bindFrame())
         XCTAssertEqual(response, .bound(bindingID: "test_binding"))
         XCTAssertEqual(handlerCalls, 2)
@@ -225,65 +304,122 @@ final class LocalSocketServerTests: XCTestCase {
         configuration.workerCount = 1
         configuration.queuedConnectionLimit = 1
         configuration.backlog = 8
-        configuration.requestTimeoutNanoseconds = 160_000_000
+        configuration.requestTimeoutNanoseconds = 250_000_000
+        let workerEntered = DispatchSemaphore(value: 0)
+        let releaseWorker = DispatchSemaphore(value: 0)
         var handlerCalls = 0
+        var handlerWaitTimedOut = false
         let server = try makeServer(endpoint: endpoint, configuration: configuration) { _ in
             handlerCalls += 1
             if handlerCalls == 1 {
-                // Keep the sole worker occupied long enough for a queued
-                // connection's accept-time deadline to expire.
-                Thread.sleep(forTimeInterval: 0.25)
+                workerEntered.signal()
+                if releaseWorker.wait(timeout: .now() + .seconds(5)) == .timedOut {
+                    handlerWaitTimedOut = true
+                }
             }
             return .bound(bindingID: "test_binding")
         }
         try server.start()
         defer { server.stop {} }
 
-        let activeConnection = Task.detached {
-            try await performExchange(
-                endpointPath: endpoint.socketPath,
-                bytes: bindFrame()
-            )
-        }
-        let queuedConnection = Task.detached {
-            try await Task.sleep(nanoseconds: 30_000_000)
-            return try await performExchange(
-                endpointPath: endpoint.socketPath,
-                bytes: bindFrame()
-            )
-        }
-        let excessConnection = Task.detached {
-            try await Task.sleep(nanoseconds: 60_000_000)
-            let descriptor = try connectSocket(endpoint.socketPath)
-            defer { _ = Darwin.close(descriptor) }
-            // Capacity rejection can close the accepted socket before this
-            // client finishes writing its request.
-            try? sendBytes(bindFrame(), to: descriptor)
-            _ = Darwin.shutdown(descriptor, SHUT_WR)
-            return try readToEOF(descriptor)
-        }
+        let endpointPath = endpoint.socketPath
+        let request = try bindFrame()
+        let requestTimeoutNanoseconds = configuration.requestTimeoutNanoseconds
+        let scenario = try await Task.detached {
+            var workerReleased = false
+            defer {
+                if !workerReleased {
+                    releaseWorker.signal()
+                }
+            }
 
-        let activeResponse = try await activeConnection.value
-        let queuedResponse = try await queuedConnection.value
-        let excessResponse = try await excessConnection.value
+            let activeDescriptor = try connectSocket(endpointPath)
+            defer { _ = Darwin.close(activeDescriptor) }
+            try sendBytes(request, to: activeDescriptor)
+            guard Darwin.shutdown(activeDescriptor, SHUT_WR) == 0 else {
+                throw SocketTestError.systemCall(errno)
+            }
+            guard waitForSignal(workerEntered, timeout: .seconds(5)) else {
+                throw SocketTestError.synchronizationTimedOut("the first handler")
+            }
+
+            // Connect in order while the handler holds the only worker. Once
+            // the excess peer sees EOF, the waiting slot is occupied by the
+            // second connection and the excess connection was rejected.
+            let queuedDescriptor = try connectSocket(endpointPath)
+            defer { _ = Darwin.close(queuedDescriptor) }
+            try sendBytes(request, to: queuedDescriptor)
+            guard Darwin.shutdown(queuedDescriptor, SHUT_WR) == 0 else {
+                throw SocketTestError.systemCall(errno)
+            }
+
+            let excessDescriptor = try connectSocket(endpointPath)
+            defer { _ = Darwin.close(excessDescriptor) }
+            try? sendBytes(request, to: excessDescriptor)
+            _ = Darwin.shutdown(excessDescriptor, SHUT_WR)
+            let excessClosedBeforeRelease = waitForPeerEOF(
+                excessDescriptor,
+                timeoutNanoseconds: 1_000_000_000
+            )
+            let queuedRemainedOpenAfterExcessRejection = peerRemainsOpen(
+                queuedDescriptor,
+                timeoutNanoseconds: 50_000_000
+            )
+
+            // The accept loop has handled the excess peer by this point, so
+            // the earlier queued peer was accepted. It also stayed open after
+            // the excess peer closed. Wait out its request budget before
+            // releasing the worker.
+            try await Task.sleep(nanoseconds: requestTimeoutNanoseconds + 50_000_000)
+            releaseWorker.signal()
+            workerReleased = true
+
+            let activeResponse = try readToEOF(activeDescriptor)
+            let queuedResponse = try readToEOF(queuedDescriptor)
+            let laterResponse = try await performExchange(
+                endpointPath: endpointPath,
+                bytes: request
+            )
+            return (
+                activeResponse: activeResponse,
+                queuedResponse: queuedResponse,
+                laterResponse: laterResponse,
+                excessClosedBeforeRelease: excessClosedBeforeRelease,
+                queuedRemainedOpenAfterExcessRejection: queuedRemainedOpenAfterExcessRejection
+            )
+        }.value
+
+        XCTAssertFalse(handlerWaitTimedOut)
+        XCTAssertTrue(
+            scenario.excessClosedBeforeRelease,
+            "The excess connection must close before worker release"
+        )
+        XCTAssertTrue(
+            scenario.queuedRemainedOpenAfterExcessRejection,
+            "The queued connection must remain open after capacity rejection"
+        )
         XCTAssertEqual(
             try NotificationProtocol.decodeResponse(
-                NotificationProtocol.decodeFrame(activeResponse)
+                NotificationProtocol.decodeFrame(scenario.activeResponse)
             ),
             .bound(bindingID: "test_binding")
         )
-        XCTAssertTrue(queuedResponse.isEmpty)
-        XCTAssertTrue(excessResponse.isEmpty)
-        XCTAssertEqual(handlerCalls, 1)
-
-        let laterResponse = try await exchange(endpoint: endpoint, bytes: bindFrame())
-        XCTAssertEqual(laterResponse, .bound(bindingID: "test_binding"))
-        XCTAssertEqual(handlerCalls, 2)
+        XCTAssertTrue(
+            scenario.queuedResponse.isEmpty,
+            "The queued request must expire before reaching the handler"
+        )
+        XCTAssertEqual(
+            try NotificationProtocol.decodeResponse(
+                NotificationProtocol.decodeFrame(scenario.laterResponse)
+            ),
+            .bound(bindingID: "test_binding")
+        )
+        XCTAssertEqual(handlerCalls, 2, "Only the active request and later request should reach the handler")
         await stop(server)
     }
 
     @MainActor
-    func testResponseDeadlineClosesOnlyTheCurrentConnection() async throws {
+    func testExpiredResponseBudgetClosesConnection() async throws {
         let endpoint = try SocketTestEndpoint()
         var configuration = LocalSocketServerConfiguration()
         configuration.responseTimeoutNanoseconds = 0
@@ -383,6 +519,7 @@ private enum SocketTestError: LocalizedError {
     case endpointPathTooLong
     case systemCall(Int32)
     case prematureEOF
+    case synchronizationTimedOut(String)
 
     var errorDescription: String? {
         switch self {
@@ -392,6 +529,8 @@ private enum SocketTestError: LocalizedError {
             "The test socket system call failed with errno \(code)"
         case .prematureEOF:
             "The test socket closed before its frame completed"
+        case .synchronizationTimedOut(let event):
+            "The test timed out waiting for \(event)"
         }
     }
 }
@@ -499,6 +638,36 @@ private func readToEOF(_ descriptor: Int32) throws -> Data {
             throw SocketTestError.systemCall(errno)
         }
     }
+}
+
+private func waitForPeerEOF(_ descriptor: Int32, timeoutNanoseconds: UInt64) -> Bool {
+    let milliseconds = Int32(min((timeoutNanoseconds + 999_999) / 1_000_000, UInt64(Int32.max)))
+    var readiness = pollfd(fd: descriptor, events: Int16(POLLIN), revents: 0)
+    let pollResult = withUnsafeMutablePointer(to: &readiness) {
+        Darwin.poll($0, 1, milliseconds)
+    }
+    guard pollResult > 0 else {
+        return false
+    }
+
+    var byte: UInt8 = 0
+    return Darwin.recv(descriptor, &byte, 1, MSG_DONTWAIT) == 0
+}
+
+private func peerRemainsOpen(_ descriptor: Int32, timeoutNanoseconds: UInt64) -> Bool {
+    let milliseconds = Int32(min((timeoutNanoseconds + 999_999) / 1_000_000, UInt64(Int32.max)))
+    var readiness = pollfd(fd: descriptor, events: Int16(POLLIN), revents: 0)
+    let pollResult = withUnsafeMutablePointer(to: &readiness) {
+        Darwin.poll($0, 1, milliseconds)
+    }
+    return pollResult == 0
+}
+
+private func waitForSignal(
+    _ semaphore: DispatchSemaphore,
+    timeout: DispatchTimeInterval
+) -> Bool {
+    semaphore.wait(timeout: .now() + timeout) == .success
 }
 
 private func performExchange(

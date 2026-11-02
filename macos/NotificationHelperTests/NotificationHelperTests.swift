@@ -1,8 +1,18 @@
-import XCTest
 import Foundation
+import XCTest
 @testable import NotificationHelper
 
 final class NotificationHelperTests: XCTestCase {
+    @MainActor
+    func testTestHostReceivesDisableServerFlagAndSkipsDefaultEndpointStartup() {
+        let environment = ProcessInfo.processInfo.environment
+        XCTAssertEqual(
+            environment["ZED_NOTIFY_TEST_DISABLE_SOCKET_SERVER"],
+            "1"
+        )
+        XCTAssertFalse(NotificationHelperApp.shouldStartSocketServer(environment: environment))
+    }
+
     @MainActor
     func testRetainedWindowCaptureKeepsTheStableFocusedZedWindow() throws {
         let environment = FakeRetainedWindowEnvironment()

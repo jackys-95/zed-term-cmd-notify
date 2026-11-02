@@ -1,6 +1,6 @@
 # Local Unix Socket Transport v1
 
-**Status:** Approved design; Rust client reviewed and committed. Swift server split into focused components; behavior review and verification after the refactor remain pending. Socket interoperability remains deferred.
+**Status:** Approved design; Rust client reviewed and committed. Bounded source review of the refactored Swift server is complete, and user-provided results confirm the full macOS suite passed on the combined changes. Socket interoperability remains deferred.
 
 ## Purpose and scope
 
@@ -105,7 +105,11 @@ User-provided results confirm that `cargo build --workspace --locked`, `cargo te
 
 The Swift transport separates server coordination, endpoint ownership, connection exchanges, and shared Darwin operations as described in the [code layout](code-layout.md). The helper app starts the server when launched and stops it during termination. Bind requests call the existing retained-window capture code. Completion requests look up the retained source and call the app's delivery callback, whose body is currently empty.
 
-User-provided results confirm `xcodebuild test` succeeded after restoration and before the file split: all 26 Swift tests passed, comprising 18 existing helper tests and eight [socket-server tests](../macos/NotificationHelperTests/LocalSocketServerTests.swift). The Xcode test scheme disables startup at the default endpoint so tests can use isolated endpoints. The eight socket-server tests are unchanged by the refactor. Swift behavior review, Xcode verification after the refactor, and real Rust-to-Swift socket integration remain pending.
+Bounded source review covered component responsibilities, resource ownership and cleanup, framing, deadlines, capacity, concurrency, test assertions, and documentation style. The startup rollback, test-host environment, disconnect ordering, response-budget test scope, and queue-capacity findings are closed. Rollback records the socket's device and inode before later startup steps and preserves a replacement entry. The Xcode test action supplies the disable-server flag; its host test confirms the flag and checks the shared startup gate.
+
+User-provided results confirm the full macOS XCTest suite passed on the combined changes: 29 tests with zero failures, comprising 19 helper tests and 10 socket-server tests. This run includes the startup rollback and test-host environment fixes, the revised disconnect and expired response-budget tests, and the queue-capacity test with its bounded check that the queued connection remains open when the excess connection is rejected. These [server tests](../macos/NotificationHelperTests/LocalSocketServerTests.swift) use isolated endpoints and fake handlers.
+
+The response-budget test covers a budget that has already expired; evidence for a timeout during a blocked write remains pending. The host test checks the shared startup gate, and ordinary app launch remains unverified. Real Rust-to-Swift socket integration remains required for the deferred interoperability slice.
 
 | Area | Cases | Required result |
 | --- | --- | --- |

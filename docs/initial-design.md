@@ -1,6 +1,6 @@
 # Initial Design: Zed Terminal Command Notifications
 
-**Status:** Scope, Mac-side notification helper, public Accessibility window-object baseline, and local Unix socket transport design approved. The protocol/test foundation and helper binding/capture foundation exist. The Rust socket client is reviewed and committed; the Swift server is split into focused components and awaits behavior review and verification after the refactor. Real-socket interoperability and runtime notification delivery remain pending. Mac-only probes have demonstrated notification delivery, source-window focus, minimized-window restoration, and closed-window rejection.
+**Status:** Scope, Mac-side notification helper, public Accessibility window-object baseline, and local Unix socket transport design approved. The protocol/test foundation and helper binding/capture foundation exist. The Rust socket client is reviewed and committed; bounded source review of the refactored Swift server is complete, and user-provided results confirm its full macOS suite passed. Real-socket interoperability and runtime notification delivery remain pending. Mac-only probes have demonstrated notification delivery, source-window focus, minimized-window restoration, and closed-window rejection.
 
 **Last reviewed:** 2026-11-01.
 
