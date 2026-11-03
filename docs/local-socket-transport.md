@@ -1,6 +1,6 @@
 # Local Unix Socket Transport v1
 
-**Status:** Approved design; Rust client reviewed and committed. Bounded source review of the refactored Swift server is complete, and user-provided results confirm the full macOS suite passed on the combined changes. Socket interoperability remains deferred.
+**Status:** Approved design; Rust client, Swift server, and socket interoperability checks are reviewed and committed. Component suites and real-socket checks passed individually. Ordinary helper-app launch and a timeout during a blocked response write remain unverified.
 
 ## Purpose and scope
 
@@ -97,11 +97,11 @@ Set `SO_NOSIGPIPE` on every Rust client socket and accepted Swift socket before 
 
 ## Validation
 
-The integration test connects the real Rust client to the Swift server over a Unix socket. Fake capture returns a source object; Rust receives its binding ID and sends a completion using it. Fake delivery must receive that same object with the expected duration and exit status, and Rust must receive `accepted`. This exercises both codecs and the transport without requiring Zed, Accessibility permission, or native notifications. These checks remain required evidence for the deferred interoperability slice.
+The integration test connects the real Rust client to the Swift server over a Unix socket. Fake capture returns a source object; Rust receives its binding ID and sends a completion using it. Fake delivery receives that same object with the expected duration and exit status, and Rust receives `accepted`. `make socket-interop` passed without requiring Zed, Accessibility permission, or native notifications. The interoperability drivers and Makefile integration are committed in `25da580`.
 
 The current Rust change provides endpoint selection, `bind`, and `complete`, with ownership and permission checks, bounded framing, nonblocking I/O, one monotonic exchange deadline, and macOS `SO_NOSIGPIPE`. Its unit tests cover pathname boundaries, a regular file at the socket path, an unavailable helper, fragmented responses, malformed and incomplete responses, oversized lengths, trailing data, a withheld response, a complete response with withheld EOF, and slow fragments that exceed the original exchange deadline.
 
-User-provided results confirm that `cargo build --workspace --locked`, `cargo test --workspace --locked`, and `cargo fmt --all -- --check` passed for the isolated Rust slice after the style and deadline-test updates. All 16 unit tests passed: eight protocol tests and eight transport tests. The usage example also passed its compile-only documentation check; it was not executed against a helper. Real Rust-to-Swift socket integration remains pending separate review.
+User-provided results confirm that `cargo build --workspace --locked`, `cargo test --workspace --locked`, and `cargo fmt --all -- --check` passed for the isolated Rust slice after the style and deadline-test updates. All 16 unit tests passed: eight protocol tests and eight transport tests. The usage example also passed its compile-only documentation check; that example was not executed against a helper. The separate socket interoperability example now exercises the real Rust client against the Swift server.
 
 The Swift transport separates server coordination, endpoint ownership, connection exchanges, and shared Darwin operations as described in the [code layout](code-layout.md). The helper app starts the server when launched and stops it during termination. Bind requests call the existing retained-window capture code. Completion requests look up the retained source and call the app's delivery callback, whose body is currently empty.
 
@@ -109,13 +109,17 @@ Bounded source review covered component responsibilities, resource ownership and
 
 User-provided results confirm the full macOS XCTest suite passed on the combined changes: 29 tests with zero failures, comprising 19 helper tests and 10 socket-server tests. This run includes the startup rollback and test-host environment fixes, the revised disconnect and expired response-budget tests, and the queue-capacity test with its bounded check that the queued connection remains open when the excess connection is rejected. These [server tests](../macos/NotificationHelperTests/LocalSocketServerTests.swift) use isolated endpoints and fake handlers.
 
-The response-budget test covers a budget that has already expired; evidence for a timeout during a blocked write remains pending. The host test checks the shared startup gate, and ordinary app launch remains unverified. Real Rust-to-Swift socket integration remains required for the deferred interoperability slice.
+Direct verification of the final interoperability changes passed `cargo build --workspace --locked`, `cargo test --workspace --locked`, `cargo fmt --all -- --check`, `make protocol-interop`, `make socket-interop`, and `make macos-test`. Rust passed all 16 unit tests and one compile-only documentation example. The macOS suite passed all 29 tests with zero failures. Socket-dependent checks needed execution outside the command sandbox because it denied socket creation. These commands ran individually; aggregate `make test` was not run during this verification.
 
-| Area | Cases | Required result |
+The response-budget test covers a budget that has already expired; evidence for a timeout during a blocked write remains pending. The host test checks the shared startup gate, and ordinary app launch remains unverified. These gaps keep full transport acceptance open. The macOS disconnect test also emitted a priority-inversion warning, retained as a follow-up.
+
+The disconnect interoperability mode delays the first fake capture beyond Rust's exchange deadline. Rust times out and closes that connection, then a later bind and completion succeed. Swift retains four workers, so independent connections can finish in either order. The test does not establish that the first response attempt finished before recovery or record its specific write error. Final server shutdown waits for active workers to finish.
+
+| Area | Cases | Recorded result and remaining evidence |
 | --- | --- | --- |
-| Framing | Fragmented reads and writes, premature EOF, malformed JSON, unsupported versions, oversized lengths, and trailing bytes in both directions | Valid exchanges complete; invalid messages fail. Rejected requests never invoke capture or delivery. |
-| Deadlines | Unavailable helper, withheld response, stalled header or payload, and missing request half-close | Each operation returns within its configured deadline. |
-| Disconnects | Rust times out and closes before Swift replies | Swift handles the failed write and serves a subsequent request. |
-| Capacity | Stalled connections fill workers and queue; excess connections arrive; queued requests expire | Excess connections close promptly. Expired queued requests never reach the handler. Released slots allow service to resume. |
-| Endpoint lifecycle | Concurrent startup, an existing live endpoint, crash recovery, shutdown, and unexpected filesystem entries | The active helper remains usable. Cleanup removes only the appropriate socket; unexpected entries remain untouched. |
-| Path limits | Accepted and rejected encoded-byte boundaries in both implementations | Overlength paths fail clearly before any filesystem changes. |
+| Framing | Fragmented reads and writes, premature EOF, malformed JSON, unsupported versions, oversized lengths, and trailing bytes in both directions | Component checks and real-socket bind/completion passed. Invalid requests do not reach the handler; Rust rejects malformed, incomplete, oversized, and trailing responses. |
+| Deadlines | Unavailable helper, withheld response, stalled header or payload, and missing request half-close | Client and server deadline checks passed, including withheld response EOF and slow response fragments. The expired response-budget test passed; timeout during an actively blocked response write remains unverified. |
+| Disconnects | Rust times out and closes before Swift replies | Passed over the real socket: Rust timed out during delayed capture, and a later bind and completion succeeded. Response-attempt order across connections and a specific write error are not established. |
+| Capacity | Stalled connections fill workers and queue; excess connections arrive; queued requests expire | Server tests passed: excess connections close, expired queued requests do not reach the handler, and service resumes after slots are released. |
+| Endpoint lifecycle | Concurrent startup, an existing live endpoint, crash recovery, shutdown, and unexpected filesystem entries | Server tests and interoperability checks passed: the active helper remains usable, stale sockets are recovered, cleanup preserves replacement entries, and unexpected files and symlinks remain untouched. Ordinary app launch remains unverified. |
+| Path limits | Accepted and rejected encoded-byte boundaries in both implementations | Component tests passed: overlength paths fail before filesystem changes. |
