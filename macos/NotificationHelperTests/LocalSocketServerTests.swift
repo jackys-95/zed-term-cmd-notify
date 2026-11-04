@@ -440,6 +440,42 @@ final class LocalSocketServerTests: XCTestCase {
         await stop(server)
     }
 
+    /// Checks that a response waiting for socket space expires and closes its connection.
+    ///
+    /// Known setup bytes fill the outgoing buffer before the bind request. The
+    /// peer stays open and unread until the worker returns, so disconnect cannot
+    /// end the write early.
+    @MainActor
+    func testBlockedResponseWriteExpiresAtItsDeadline() async throws {
+        let responseBudget: UInt64 = 150_000_000
+        var handlerCalls = 0
+        var responseReadyAt: UInt64?
+        let handler: LocalSocketServer.RequestHandler = { _ in
+            handlerCalls += 1
+            responseReadyAt = DispatchTime.now().uptimeNanoseconds
+            return .bound(bindingID: "test_binding")
+        }
+
+        let exchange = try await Task.detached {
+            try performBlockedResponseExchange(
+                responseTimeoutNanoseconds: responseBudget,
+                handler: handler
+            )
+        }.value
+
+        XCTAssertEqual(handlerCalls, 1)
+        let readyAt = try XCTUnwrap(responseReadyAt)
+        let elapsed = exchange.finishedAt - readyAt
+        XCTAssertGreaterThanOrEqual(elapsed, responseBudget)
+        XCTAssertLessThan(elapsed, 2_000_000_000, "Response waiting must remain bounded")
+        XCTAssertFalse(exchange.prefilledBytes.isEmpty)
+        XCTAssertEqual(
+            exchange.receivedBytes,
+            exchange.prefilledBytes,
+            "The peer must receive only setup bytes followed by EOF, with no response"
+        )
+    }
+
     @MainActor
     private func makeServer(
         endpoint: SocketTestEndpoint,
@@ -520,6 +556,7 @@ private enum SocketTestError: LocalizedError {
     case systemCall(Int32)
     case prematureEOF
     case synchronizationTimedOut(String)
+    case outgoingBufferDidNotFill
 
     var errorDescription: String? {
         switch self {
@@ -531,8 +568,133 @@ private enum SocketTestError: LocalizedError {
             "The test socket closed before its frame completed"
         case .synchronizationTimedOut(let event):
             "The test timed out waiting for \(event)"
+        case .outgoingBufferDidNotFill:
+            "The test socket did not fill within the 16 KiB setup cap and one-second deadline"
         }
     }
+}
+
+/// Runs a real connection exchange whose response has no outgoing buffer space.
+///
+/// Call off the main actor so its handler can run during the worker wait. Setup
+/// requests a 4 KiB send buffer and writes at most 16 KiB of synthetic data.
+/// `serve` owns the server descriptor after dispatch; this fixture owns the peer.
+private func performBlockedResponseExchange(
+    responseTimeoutNanoseconds: UInt64,
+    handler: @escaping LocalSocketServer.RequestHandler
+) throws -> (prefilledBytes: Data, receivedBytes: Data, finishedAt: UInt64) {
+    var descriptors: [Int32] = [-1, -1]
+    guard Darwin.socketpair(AF_UNIX, SOCK_STREAM, 0, &descriptors) == 0 else {
+        throw SocketTestError.systemCall(errno)
+    }
+    let serverDescriptor = descriptors[0]
+    let peerDescriptor = descriptors[1]
+    var serverOwnsDescriptor = false
+    defer {
+        if !serverOwnsDescriptor {
+            _ = Darwin.close(serverDescriptor)
+        }
+        _ = Darwin.close(peerDescriptor)
+    }
+
+    for descriptor in descriptors {
+        guard LocalSocketOperations.setNonblocking(descriptor),
+              LocalSocketOperations.setNoSigPipe(descriptor)
+        else {
+            throw SocketTestError.systemCall(errno)
+        }
+    }
+    var sendBufferSize: Int32 = 4 * 1024
+    guard Darwin.setsockopt(
+        serverDescriptor,
+        SOL_SOCKET,
+        SO_SNDBUF,
+        &sendBufferSize,
+        socklen_t(MemoryLayout<Int32>.size)
+    ) == 0 else {
+        throw SocketTestError.systemCall(errno)
+    }
+    var optionLength = socklen_t(MemoryLayout<Int32>.size)
+    guard Darwin.getsockopt(
+        serverDescriptor,
+        SOL_SOCKET,
+        SO_SNDBUF,
+        &sendBufferSize,
+        &optionLength
+    ) == 0 else {
+        throw SocketTestError.systemCall(errno)
+    }
+    guard sendBufferSize > 0, sendBufferSize <= 16 * 1024 else {
+        throw SocketTestError.outgoingBufferDidNotFill
+    }
+
+    let prefilledBytes = try fillOutgoingBuffer(serverDescriptor)
+    // The two socket directions have separate capacity. Filling server-to-peer
+    // leaves peer-to-server available for this valid request and its EOF.
+    try sendBytes(bindFrame(), to: peerDescriptor)
+    guard Darwin.shutdown(peerDescriptor, SHUT_WR) == 0 else {
+        throw SocketTestError.systemCall(errno)
+    }
+
+    var configuration = LocalSocketServerConfiguration()
+    configuration.responseTimeoutNanoseconds = responseTimeoutNanoseconds
+    let responseConfiguration = configuration
+    let connection = LocalSocketConnection(
+        descriptor: serverDescriptor,
+        acceptedAt: DispatchTime.now().uptimeNanoseconds
+    )
+    let finished = DispatchSemaphore(value: 0)
+    serverOwnsDescriptor = true
+    DispatchQueue.global(qos: .userInitiated).async {
+        connection.serve(configuration: responseConfiguration, handler: handler)
+        finished.signal()
+    }
+    guard waitForSignal(finished, timeout: .seconds(2)) else {
+        // A lost write deadline must fail without leaving a worker behind.
+        // Shut down the peer to release the socket wait before fixture cleanup.
+        _ = Darwin.shutdown(peerDescriptor, SHUT_RDWR)
+        guard waitForSignal(finished, timeout: .seconds(2)) else {
+            throw SocketTestError.synchronizationTimedOut("blocked-write worker cleanup")
+        }
+        throw SocketTestError.synchronizationTimedOut("the response deadline")
+    }
+    let finishedAt = DispatchTime.now().uptimeNanoseconds
+    // serve has returned and closed its socket. Draining cannot make the
+    // response write succeed because no worker remains to send response bytes.
+    return (prefilledBytes, try readToEOF(peerDescriptor), finishedAt)
+}
+
+/// Fills a nonblocking socket until even a one-byte send would have to wait.
+///
+/// Returns the exact synthetic bytes sent so the caller can distinguish them
+/// from a later protocol response. Setup stops at 16 KiB or one second.
+private func fillOutgoingBuffer(_ descriptor: Int32) throws -> Data {
+    let byteLimit = 16 * 1024
+    let deadline = DispatchTime.now().uptimeNanoseconds + 1_000_000_000
+    let bytes = [UInt8](repeating: 0x5a, count: 512)
+    var prefilled = Data()
+    var sendSize = bytes.count
+    while prefilled.count < byteLimit,
+          DispatchTime.now().uptimeNanoseconds < deadline {
+        let count = min(sendSize, byteLimit - prefilled.count)
+        let result = bytes.withUnsafeBytes {
+            Darwin.send(descriptor, $0.baseAddress!, count, 0)
+        }
+        if result > 0 {
+            prefilled.append(contentsOf: bytes.prefix(result))
+        } else if result < 0 && errno == EINTR {
+            continue
+        } else if result < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) {
+            if count == 1 {
+                return prefilled
+            }
+            // A larger send can fail while a small response still fits.
+            sendSize = 1
+        } else {
+            throw SocketTestError.systemCall(result == 0 ? EPIPE : errno)
+        }
+    }
+    throw SocketTestError.outgoingBufferDidNotFill
 }
 
 private func bindFrame() throws -> Data {
