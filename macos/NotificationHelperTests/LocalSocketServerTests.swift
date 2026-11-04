@@ -256,19 +256,12 @@ final class LocalSocketServerTests: XCTestCase {
     @MainActor
     func testPeerDisconnectDoesNotPreventTheNextRequest() async throws {
         let endpoint = try SocketTestEndpoint()
-        let handlerEntered = DispatchSemaphore(value: 0)
-        let allowResponse = DispatchSemaphore(value: 0)
+        let handlerRan = expectation(description: "first handler ran")
         var handlerCalls = 0
-        var handlerWaitTimedOut = false
         let server = try makeServer(endpoint: endpoint) { _ in
             handlerCalls += 1
             if handlerCalls == 1 {
-                handlerEntered.signal()
-                // The detached client closes its descriptor before releasing
-                // this main-actor handler.
-                if allowResponse.wait(timeout: .now() + .seconds(5)) == .timedOut {
-                    handlerWaitTimedOut = true
-                }
+                handlerRan.fulfill()
             }
             return .bound(bindingID: "test_binding")
         }
@@ -277,20 +270,13 @@ final class LocalSocketServerTests: XCTestCase {
 
         try await Task.detached {
             let descriptor = try connectSocket(endpoint.socketPath)
-            defer {
-                _ = Darwin.close(descriptor)
-                allowResponse.signal()
-            }
+            defer { _ = Darwin.close(descriptor) }
             try sendBytes(bindFrame(), to: descriptor)
-            guard Darwin.shutdown(descriptor, SHUT_WR) == 0 else {
-                throw SocketTestError.systemCall(errno)
-            }
-            guard waitForSignal(handlerEntered, timeout: .seconds(5)) else {
-                throw SocketTestError.synchronizationTimedOut("the first handler")
-            }
+            // Closing the client supplies the EOF required to validate the
+            // request before the server calls its main-actor handler.
         }.value
 
-        XCTAssertFalse(handlerWaitTimedOut)
+        await fulfillment(of: [handlerRan], timeout: 5)
         let response = try await exchange(endpoint: endpoint, bytes: bindFrame())
         XCTAssertEqual(response, .bound(bindingID: "test_binding"))
         XCTAssertEqual(handlerCalls, 2)
